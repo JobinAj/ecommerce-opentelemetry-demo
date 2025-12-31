@@ -1,2 +1,15 @@
 node_modules/
 .env
+# Local terraform directory (The one causing the error)
+**/.terraform/*
+
+# State files (Contains secrets/passwords! Never commit these!)
+*.tfstate
+*.tfstate.*
+
+# Crash logs
+crash.log
+
+# Variables files (If they contain secrets)
+*.tfvars
+*.tfvars.json
