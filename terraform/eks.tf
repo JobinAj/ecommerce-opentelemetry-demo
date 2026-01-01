@@ -4,7 +4,7 @@ module "eks" {
 
   # Cluster
   name               = var.cluster_name
-  kubernetes_version = "1.29"
+  kubernetes_version = "1.32"
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -19,7 +19,7 @@ module "eks" {
       min_size     = 1
       max_size     = 4
 
-      instance_types = ["t3.micro"]
+      instance_types = ["t2.medium"]
       capacity_type  = "ON_DEMAND"
 
       labels = {
@@ -36,7 +36,7 @@ module "eks" {
       min_size     = 2
       max_size     = 6
 
-      instance_types = ["t3.micro"]
+      instance_types = ["t2.medium"]
       capacity_type  = "ON_DEMAND"
 
       labels = {
