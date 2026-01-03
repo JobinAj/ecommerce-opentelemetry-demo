@@ -15,11 +15,11 @@ module "eks" {
   # Managed Node Groups
   eks_managed_node_groups = {
     general = {
-      desired_size = 2
+      desired_size = 1
       min_size     = 1
-      max_size     = 4
+      max_size     = 2
 
-      instance_types = ["t2.medium"]
+      instance_types = ["t3.medium"]
       capacity_type  = "ON_DEMAND"
 
       labels = {
@@ -32,20 +32,30 @@ module "eks" {
     }
 
     application = {
-      desired_size = 2
-      min_size     = 2
-      max_size     = 6
+      desired_size = 1
+      min_size     = 1
+      max_size     = 3
 
-      instance_types = ["t2.medium"]
+      instance_types = ["t3.medium"]
       capacity_type  = "ON_DEMAND"
 
       labels = {
         role = "application"
       }
 
+      tags = {
+        Environment = var.environment
+      }
     }
   }
 
+  # Enable the default node security group to ensure proper communication
+  create_node_security_group = true
+
+  # Enable admin permissions for the cluster creator
+  enable_cluster_creator_admin_permissions = true
+
+  # Addons
   addons = {
     coredns = {
       most_recent = true
