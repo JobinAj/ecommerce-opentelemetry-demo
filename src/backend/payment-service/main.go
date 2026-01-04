@@ -1,45 +1,16 @@
 package main
 
 import (
-	"crypto/md5"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/mux"
 )
-
-type Payment struct {
-	ID            string    `json:"id"`
-	OrderID       string    `json:"orderId"`
-	Amount        float64   `json:"amount"`
-	Currency      string    `json:"currency"`
-	Status        string    `json:"status"`
-	CardLastFour  string    `json:"cardLastFour"`
-	TransactionID string    `json:"transactionId"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
-}
-
-type PaymentRequest struct {
-	OrderID    string  `json:"orderId"`
-	Amount     float64 `json:"amount"`
-	CardNumber string  `json:"cardNumber"`
-	CardHolder string  `json:"cardHolder"`
-	ExpiryDate string  `json:"expiryDate"`
-	CVV        string  `json:"cvv"`
-}
-
-type PaymentResponse struct {
-	Success bool    `json:"success"`
-	Message string  `json:"message"`
-	Payment Payment `json:"payment,omitempty"`
-}
-
-var payments = make(map[string]Payment)
-var paymentCounter = 0
 
 func enableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,65 +25,6 @@ func enableCORS(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
-}
-
-func validateCardNumber(cardNumber string) bool {
-	if len(cardNumber) < 13 || len(cardNumber) > 19 {
-		return false
-	}
-
-	sum := 0
-	isEven := false
-
-	for i := len(cardNumber) - 1; i >= 0; i-- {
-		digit := int(cardNumber[i] - '0')
-
-		if isEven {
-			digit *= 2
-			if digit > 9 {
-				digit -= 9
-			}
-		}
-
-		sum += digit
-		isEven = !isEven
-	}
-
-	return sum%10 == 0
-}
-
-func validateExpiryDate(expiryDate string) bool {
-	if len(expiryDate) != 5 || expiryDate[2] != '/' {
-		return false
-	}
-
-	month := expiryDate[:2]
-	year := expiryDate[3:]
-
-	var m, y int
-	fmt.Sscanf(month, "%d", &m)
-	fmt.Sscanf(year, "%d", &y)
-
-	if m < 1 || m > 12 {
-		return false
-	}
-
-	currentYear := time.Now().Year() % 100
-	if y < currentYear {
-		return false
-	}
-
-	return true
-}
-
-func validateCVV(cvv string) bool {
-	return len(cvv) >= 3 && len(cvv) <= 4
-}
-
-func generateTransactionID() string {
-	data := []byte(fmt.Sprintf("%d", time.Now().UnixNano()))
-	hash := md5.Sum(data)
-	return fmt.Sprintf("%x", hash)[:16]
 }
 
 func processPayment(w http.ResponseWriter, r *http.Request) {
@@ -155,30 +67,17 @@ func processPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	paymentCounter++
-	paymentID := fmt.Sprintf("PAY_%d", paymentCounter)
-	transactionID := generateTransactionID()
-	lastFour := req.CardNumber[len(req.CardNumber)-4:]
-
-	payment := Payment{
-		ID:           paymentID,
-		OrderID:      req.OrderID,
-		Amount:       req.Amount,
-		Currency:     "USD",
-		Status:       "completed",
-		CardLastFour: lastFour,
-		TransactionID: transactionID,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+	payment, err := CreatePayment(req)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-
-	payments[paymentID] = payment
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(PaymentResponse{
 		Success: true,
 		Message: "Payment processed successfully",
-		Payment: payment,
+		Payment: *payment,
 	})
 }
 
@@ -188,10 +87,14 @@ func getPayment(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	paymentID := vars["paymentId"]
 
-	payment, exists := payments[paymentID]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Payment not found"})
+	payment, err := GetPayment(paymentID)
+	if err != nil {
+		if err.Error() == "payment not found" {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Payment not found"})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -204,15 +107,18 @@ func getPaymentByOrderID(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	orderID := vars["orderId"]
 
-	for _, payment := range payments {
-		if payment.OrderID == orderID {
-			json.NewEncoder(w).Encode(payment)
+	payment, err := GetPaymentByOrderID(orderID)
+	if err != nil {
+		if err.Error() == "payment not found for this order" {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Payment not found for this order"})
 			return
 		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	w.WriteHeader(http.StatusNotFound)
-	json.NewEncoder(w).Encode(map[string]string{"error": "Payment not found for this order"})
+	json.NewEncoder(w).Encode(payment)
 }
 
 func refundPayment(w http.ResponseWriter, r *http.Request) {
@@ -221,21 +127,25 @@ func refundPayment(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	paymentID := vars["paymentId"]
 
-	payment, exists := payments[paymentID]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Payment not found"})
+	err := UpdatePaymentStatus(paymentID, "refunded")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	payment.Status = "refunded"
-	payment.UpdatedAt = time.Now()
-	payments[paymentID] = payment
+	payment, err := GetPayment(paymentID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	json.NewEncoder(w).Encode(payment)
 }
 
 func main() {
+	InitDB()
+	defer CloseDB()
+
 	r := mux.NewRouter()
 
 	r.Use(enableCORS)

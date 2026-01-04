@@ -1,46 +1,16 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gorilla/mux"
 )
-
-type CartItem struct {
-	ProductID     string  `json:"productId"`
-	ProductName   string  `json:"productName"`
-	Price         float64 `json:"price"`
-	Quantity      int     `json:"quantity"`
-	SelectedSize  string  `json:"selectedSize"`
-	SelectedColor string  `json:"selectedColor"`
-}
-
-type Cart struct {
-	ID        string      `json:"id"`
-	UserID    string      `json:"userId"`
-	Items     []CartItem  `json:"items"`
-	Total     float64     `json:"total"`
-	CreatedAt time.Time   `json:"createdAt"`
-	UpdatedAt time.Time   `json:"updatedAt"`
-}
-
-type Order struct {
-	ID        string      `json:"id"`
-	UserID    string      `json:"userId"`
-	Items     []CartItem  `json:"items"`
-	Total     float64     `json:"total"`
-	Status    string      `json:"status"`
-	CreatedAt time.Time   `json:"createdAt"`
-	UpdatedAt time.Time   `json:"updatedAt"`
-}
-
-var carts = make(map[string]Cart)
-var orders = make(map[string]Order)
-var orderCounter = 0
 
 func enableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -64,18 +34,13 @@ func createCart(w http.ResponseWriter, r *http.Request) {
 	json.NewDecoder(r.Body).Decode(&req)
 
 	userID := req["userId"]
-	cartID := fmt.Sprintf("cart_%d", time.Now().UnixNano())
 
-	cart := Cart{
-		ID:        cartID,
-		UserID:    userID,
-		Items:     []CartItem{},
-		Total:     0,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+	cart, err := CreateCart(userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	carts[cartID] = cart
 	json.NewEncoder(w).Encode(cart)
 }
 
@@ -88,18 +53,18 @@ func addItemToCart(w http.ResponseWriter, r *http.Request) {
 	var item CartItem
 	json.NewDecoder(r.Body).Decode(&item)
 
-	cart, exists := carts[cartID]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Cart not found"})
+	err := AddItemToCart(cartID, item)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	cart.Items = append(cart.Items, item)
-	cart.Total += item.Price * float64(item.Quantity)
-	cart.UpdatedAt = time.Now()
+	cart, err := GetCart(cartID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
-	carts[cartID] = cart
 	json.NewEncoder(w).Encode(cart)
 }
 
@@ -110,23 +75,18 @@ func removeItemFromCart(w http.ResponseWriter, r *http.Request) {
 	cartID := vars["cartId"]
 	productID := vars["productId"]
 
-	cart, exists := carts[cartID]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Cart not found"})
+	err := RemoveItemFromCart(cartID, productID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	for i, item := range cart.Items {
-		if item.ProductID == productID {
-			cart.Total -= item.Price * float64(item.Quantity)
-			cart.Items = append(cart.Items[:i], cart.Items[i+1:]...)
-			break
-		}
+	cart, err := GetCart(cartID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	cart.UpdatedAt = time.Now()
-	carts[cartID] = cart
 	json.NewEncoder(w).Encode(cart)
 }
 
@@ -136,10 +96,14 @@ func getCart(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	cartID := vars["cartId"]
 
-	cart, exists := carts[cartID]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Cart not found"})
+	cart, err := GetCart(cartID)
+	if err != nil {
+		if err.Error() == "cart not found" {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Cart not found"})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -152,29 +116,16 @@ func createOrder(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	cartID := vars["cartId"]
 
-	cart, exists := carts[cartID]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Cart not found"})
+	order, err := CreateOrder(cartID)
+	if err != nil {
+		if err.Error() == "cart not found" {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Cart not found"})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	orderCounter++
-	orderID := fmt.Sprintf("ORD_%d", orderCounter)
-
-	order := Order{
-		ID:        orderID,
-		UserID:    cart.UserID,
-		Items:     cart.Items,
-		Total:     cart.Total,
-		Status:    "pending",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
-	}
-
-	orders[orderID] = order
-
-	delete(carts, cartID)
 
 	json.NewEncoder(w).Encode(order)
 }
@@ -185,10 +136,14 @@ func getOrder(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	orderID := vars["orderId"]
 
-	order, exists := orders[orderID]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Order not found"})
+	order, err := GetOrder(orderID)
+	if err != nil {
+		if err.Error() == "order not found" {
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"error": "Order not found"})
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -204,16 +159,17 @@ func updateOrderStatus(w http.ResponseWriter, r *http.Request) {
 	var req map[string]string
 	json.NewDecoder(r.Body).Decode(&req)
 
-	order, exists := orders[orderID]
-	if !exists {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]string{"error": "Order not found"})
+	err := UpdateOrderStatus(orderID, req["status"])
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	order.Status = req["status"]
-	order.UpdatedAt = time.Now()
-	orders[orderID] = order
+	order, err := GetOrder(orderID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	json.NewEncoder(w).Encode(order)
 }
@@ -224,17 +180,19 @@ func getUserOrders(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	userID := vars["userId"]
 
-	var userOrders []Order
-	for _, order := range orders {
-		if order.UserID == userID {
-			userOrders = append(userOrders, order)
-		}
+	orders, err := GetUserOrders(userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	json.NewEncoder(w).Encode(userOrders)
+	json.NewEncoder(w).Encode(orders)
 }
 
 func main() {
+	InitDB()
+	defer CloseDB()
+
 	r := mux.NewRouter()
 
 	r.Use(enableCORS)

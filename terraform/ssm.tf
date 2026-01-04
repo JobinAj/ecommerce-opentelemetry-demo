@@ -15,7 +15,7 @@ resource "aws_iam_role" "ssm_ec2_role" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect    = "Allow"
+        Effect = "Allow"
         Principal = {
           Service = "ec2.amazonaws.com"
         }
@@ -45,12 +45,12 @@ resource "aws_security_group" "ssm_ec2_sg" {
   description = "Security group for SSM-only EC2"
   vpc_id      = module.vpc.vpc_id
 
-egress {
-  from_port   = 443
-  to_port     = 443
-  protocol    = "tcp"
-  cidr_blocks = [module.vpc.vpc_cidr_block]
-}
+  egress {
+    from_port        = 443
+    to_port          = 443
+    protocol         = "tcp"
+    cidr_blocks      = ["0.0.0.0/0"]
+  }
 
   tags = {
     Name        = "${var.cluster_name}-ssm-sg"
