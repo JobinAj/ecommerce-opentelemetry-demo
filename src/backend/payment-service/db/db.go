@@ -1,4 +1,4 @@
-package main
+package db
 
 import (
 	"crypto/md5"
@@ -215,8 +215,8 @@ func UpdatePaymentStatus(paymentID, status string) error {
 	return err
 }
 
-// validateCardNumber validates a card number using Luhn algorithm
-func validateCardNumber(cardNumber string) bool {
+// ValidateCardNumber validates a card number using Luhn algorithm
+func ValidateCardNumber(cardNumber string) bool {
 	if len(cardNumber) < 13 || len(cardNumber) > 19 {
 		return false
 	}
@@ -241,8 +241,8 @@ func validateCardNumber(cardNumber string) bool {
 	return sum%10 == 0
 }
 
-// validateExpiryDate validates the expiry date
-func validateExpiryDate(expiryDate string) bool {
+// ValidateExpiryDate validates the expiry date
+func ValidateExpiryDate(expiryDate string) bool {
 	if len(expiryDate) != 5 || expiryDate[2] != '/' {
 		return false
 	}
@@ -266,8 +266,8 @@ func validateExpiryDate(expiryDate string) bool {
 	return true
 }
 
-// validateCVV validates the CVV
-func validateCVV(cvv string) bool {
+// ValidateCVV validates the CVV
+func ValidateCVV(cvv string) bool {
 	return len(cvv) >= 3 && len(cvv) <= 4
 }
 
