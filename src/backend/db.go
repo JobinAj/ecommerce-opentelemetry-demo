@@ -1,4 +1,4 @@
-package main
+package db
 
 import (
 	"database/sql"
@@ -15,11 +15,11 @@ var DB *sql.DB
 // InitDB initializes the database connection
 func InitDB() {
 	// Get database connection details from environment variables
-	host := getEnvOrDefault("DB_HOST", "localhost")
-	port := getEnvOrDefault("DB_PORT", "5432")
-	user := getEnvOrDefault("DB_USER", "postgres")
-	password := getEnvOrDefault("DB_PASSWORD", "postgres")
-	dbname := getEnvOrDefault("DB_NAME", "ecommerce")
+	host := GetEnvOrDefault("DB_HOST", "localhost")
+	port := GetEnvOrDefault("DB_PORT", "5432")
+	user := GetEnvOrDefault("DB_USER", "postgres")
+	password := GetEnvOrDefault("DB_PASSWORD", "postgres")
+	dbname := GetEnvOrDefault("DB_NAME", "ecommerce")
 
 	// Construct the connection string
 	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
@@ -40,8 +40,8 @@ func InitDB() {
 	log.Println("Successfully connected to database!")
 }
 
-// getEnvOrDefault returns the environment variable value or a default value
-func getEnvOrDefault(key, defaultValue string) string {
+// GetEnvOrDefault returns the environment variable value or a default value
+func GetEnvOrDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}

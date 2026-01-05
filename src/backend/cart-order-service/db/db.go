@@ -1,8 +1,7 @@
-package main
+package db
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"

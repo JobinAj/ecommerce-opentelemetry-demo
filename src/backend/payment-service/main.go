@@ -1,15 +1,13 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"os"
-	"time"
 
 	"github.com/gorilla/mux"
+	"versace-payment-service/db"
 )
 
 func enableCORS(next http.Handler) http.Handler {
@@ -30,51 +28,51 @@ func enableCORS(next http.Handler) http.Handler {
 func processPayment(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	var req PaymentRequest
+	var req db.PaymentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(PaymentResponse{
+		json.NewEncoder(w).Encode(db.PaymentResponse{
 			Success: false,
 			Message: "Invalid request format",
 		})
 		return
 	}
 
-	if !validateCardNumber(req.CardNumber) {
+	if !db.ValidateCardNumber(req.CardNumber) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(PaymentResponse{
+		json.NewEncoder(w).Encode(db.PaymentResponse{
 			Success: false,
 			Message: "Invalid card number",
 		})
 		return
 	}
 
-	if !validateExpiryDate(req.ExpiryDate) {
+	if !db.ValidateExpiryDate(req.ExpiryDate) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(PaymentResponse{
+		json.NewEncoder(w).Encode(db.PaymentResponse{
 			Success: false,
 			Message: "Invalid or expired card",
 		})
 		return
 	}
 
-	if !validateCVV(req.CVV) {
+	if !db.ValidateCVV(req.CVV) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(PaymentResponse{
+		json.NewEncoder(w).Encode(db.PaymentResponse{
 			Success: false,
 			Message: "Invalid CVV",
 		})
 		return
 	}
 
-	payment, err := CreatePayment(req)
+	payment, err := db.CreatePayment(req)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(PaymentResponse{
+	json.NewEncoder(w).Encode(db.PaymentResponse{
 		Success: true,
 		Message: "Payment processed successfully",
 		Payment: *payment,
@@ -87,7 +85,7 @@ func getPayment(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	paymentID := vars["paymentId"]
 
-	payment, err := GetPayment(paymentID)
+	payment, err := db.GetPayment(paymentID)
 	if err != nil {
 		if err.Error() == "payment not found" {
 			w.WriteHeader(http.StatusNotFound)
@@ -107,7 +105,7 @@ func getPaymentByOrderID(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	orderID := vars["orderId"]
 
-	payment, err := GetPaymentByOrderID(orderID)
+	payment, err := db.GetPaymentByOrderID(orderID)
 	if err != nil {
 		if err.Error() == "payment not found for this order" {
 			w.WriteHeader(http.StatusNotFound)
@@ -127,13 +125,13 @@ func refundPayment(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	paymentID := vars["paymentId"]
 
-	err := UpdatePaymentStatus(paymentID, "refunded")
+	err := db.UpdatePaymentStatus(paymentID, "refunded")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	payment, err := GetPayment(paymentID)
+	payment, err := db.GetPayment(paymentID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -143,8 +141,8 @@ func refundPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	InitDB()
-	defer CloseDB()
+	db.InitDB()
+	defer db.CloseDB()
 
 	r := mux.NewRouter()
 
