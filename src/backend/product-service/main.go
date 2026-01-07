@@ -6,10 +6,11 @@ import (
 	"log"
 	"net/http"
 
-	"versace-product-service/db"
-
 	"github.com/gorilla/mux"
+	"product-service/db"
 )
+
+
 
 func enableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -113,16 +114,16 @@ func main() {
 
 	r.Use(enableCORS)
 
-	r.HandleFunc("/api/products", getAllProducts).Methods("GET")
-	r.HandleFunc("/api/products/{id}", getProductByID).Methods("GET")
-	r.HandleFunc("/api/categories", getCategories).Methods("GET")
-	r.HandleFunc("/api/search", searchProducts).Methods("GET")
-	r.HandleFunc("/api/stock/update", updateStock).Methods("POST")
+	r.HandleFunc("/api/products", getAllProducts).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/products/{id}", getProductByID).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/categories", getCategories).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/search", searchProducts).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/stock/update", updateStock).Methods("POST", "OPTIONS")
 
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
-	}).Methods("GET")
+	}).Methods("GET", "OPTIONS")
 
 	port := ":8001"
 	fmt.Printf("Product Service running on http://localhost%s\n", port)

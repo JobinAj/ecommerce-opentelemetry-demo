@@ -2,11 +2,10 @@ package db
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
-
+	"github.com/lib/pq"
 	_ "github.com/lib/pq"
 )
 
@@ -16,14 +15,14 @@ var DB *sql.DB
 // InitDB initializes the database connection
 func InitDB() {
 	// Get database connection details from environment variables
-	host := getEnvOrDefault("DB_HOST", "localhost")
-	port := getEnvOrDefault("DB_PORT", "5432")
-	user := getEnvOrDefault("DB_USER", "postgres")
-	password := getEnvOrDefault("DB_PASSWORD", "postgres")
-	dbname := getEnvOrDefault("DB_NAME", "ecommerce")
+	host := GetEnvOrDefault("DB_HOST", "localhost")
+	port := GetEnvOrDefault("DB_PORT", "5432")
+	user := GetEnvOrDefault("DB_USER", "postgres")
+	password := GetEnvOrDefault("DB_PASSWORD", "postgres")
+	dbname := GetEnvOrDefault("DB_NAME", "ecommerce")
 
 	// Construct the connection string
-	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
 		host, port, user, password, dbname)
 
 	// Open database connection
@@ -41,8 +40,8 @@ func InitDB() {
 	log.Println("Successfully connected to database!")
 }
 
-// getEnvOrDefault returns the environment variable value or a default value
-func getEnvOrDefault(key, defaultValue string) string {
+// GetEnvOrDefault returns the environment variable value or a default value
+func GetEnvOrDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
@@ -56,91 +55,64 @@ func CloseDB() {
 	}
 }
 
-// Product represents a product in the system
 type Product struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	Category string   `json:"category"`
-	Price    float64  `json:"price"`
-	Image    string   `json:"image"`
-	Desc     string   `json:"description"`
-	Rating   float64  `json:"rating"`
-	Reviews  int      `json:"reviews"`
-	Sizes    []string `json:"sizes"`
-	Colors   []string `json:"colors"`
-	InStock  bool     `json:"inStock"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Category    string   `json:"category"`
+	Price       float64  `json:"price"`
+	Image       string   `json:"image"`
+	Description string   `json:"description"`
+	Rating      float64  `json:"rating"`
+	Reviews     int      `json:"reviews"`
+	Sizes       []string `json:"sizes"`
+	Colors      []string `json:"colors"`
+	InStock     bool     `json:"inStock"`
+	CreatedAt   string   `json:"createdAt"`
+	UpdatedAt   string   `json:"updatedAt"`
 }
 
-// GetProducts retrieves all products from the database
+// GetProducts retrieves products with optional category and search filters
 func GetProducts(category, search string) ([]Product, error) {
-	var products []Product
-	var rows *sql.Rows
-	var err error
+	query := `SELECT id, name, category, price, image, description, rating, reviews, sizes, colors, in_stock, created_at, updated_at FROM products WHERE true`
+	var args []interface{}
+	argCount := 1
 
-	if category != "" && search != "" {
-		rows, err = DB.Query(`
-			SELECT id, name, category, price, image, description, rating, reviews, sizes, colors, in_stock
-			FROM products 
-			WHERE category = $1 AND (name ILIKE $2 OR description ILIKE $2)
-			ORDER BY name`, category, "%"+search+"%")
-	} else if category != "" {
-		rows, err = DB.Query(`
-			SELECT id, name, category, price, image, description, rating, reviews, sizes, colors, in_stock
-			FROM products 
-			WHERE category = $1
-			ORDER BY name`, category)
-	} else if search != "" {
-		rows, err = DB.Query(`
-			SELECT id, name, category, price, image, description, rating, reviews, sizes, colors, in_stock
-			FROM products 
-			WHERE name ILIKE $1 OR description ILIKE $1
-			ORDER BY name`, "%"+search+"%")
-	} else {
-		rows, err = DB.Query(`
-			SELECT id, name, category, price, image, description, rating, reviews, sizes, colors, in_stock
-			FROM products 
-			ORDER BY name`)
+	if category != "" {
+		query += fmt.Sprintf(" AND category = $%d", argCount)
+		args = append(args, category)
+		argCount++
 	}
 
+	if search != "" {
+		query += fmt.Sprintf(" AND (name ILIKE $%d OR description ILIKE $%d)", argCount, argCount+1)
+		args = append(args, "%"+search+"%", "%"+search+"%")
+		argCount += 2
+	}
+
+	query += " ORDER BY created_at DESC"
+
+	rows, err := DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
+	var products []Product
 	for rows.Next() {
-		var product Product
-		var sizesBytes, colorsBytes []byte
-
+		var p Product
+		var sizes, colors pq.StringArray
 		err := rows.Scan(
-			&product.ID,
-			&product.Name,
-			&product.Category,
-			&product.Price,
-			&product.Image,
-			&product.Desc,
-			&product.Rating,
-			&product.Reviews,
-			&sizesBytes,
-			&colorsBytes,
-			&product.InStock,
+			&p.ID, &p.Name, &p.Category, &p.Price, &p.Image, &p.Description,
+			&p.Rating, &p.Reviews, &sizes, &colors, &p.InStock, &p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		// Unmarshal the array fields
-		if sizesBytes != nil {
-			if err := json.Unmarshal(sizesBytes, &product.Sizes); err != nil {
-				return nil, err
-			}
-		}
-		if colorsBytes != nil {
-			if err := json.Unmarshal(colorsBytes, &product.Colors); err != nil {
-				return nil, err
-			}
-		}
+		p.Sizes = []string(sizes)
+		p.Colors = []string(colors)
 
-		products = append(products, product)
+		products = append(products, p)
 	}
 
 	return products, nil
@@ -148,26 +120,14 @@ func GetProducts(category, search string) ([]Product, error) {
 
 // GetProductByID retrieves a product by its ID
 func GetProductByID(id string) (*Product, error) {
-	var product Product
-	var sizesBytes, colorsBytes []byte
+	query := `SELECT id, name, category, price, image, description, rating, reviews, sizes, colors, in_stock, created_at, updated_at FROM products WHERE id = $1`
 
-	err := DB.QueryRow(`
-		SELECT id, name, category, price, image, description, rating, reviews, sizes, colors, in_stock
-		FROM products 
-		WHERE id = $1`, id).Scan(
-		&product.ID,
-		&product.Name,
-		&product.Category,
-		&product.Price,
-		&product.Image,
-		&product.Desc,
-		&product.Rating,
-		&product.Reviews,
-		&sizesBytes,
-		&colorsBytes,
-		&product.InStock,
+	var p Product
+	var sizes, colors pq.StringArray
+	err := DB.QueryRow(query, id).Scan(
+		&p.ID, &p.Name, &p.Category, &p.Price, &p.Image, &p.Description,
+		&p.Rating, &p.Reviews, &sizes, &colors, &p.InStock, &p.CreatedAt, &p.UpdatedAt,
 	)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("product not found")
@@ -175,24 +135,17 @@ func GetProductByID(id string) (*Product, error) {
 		return nil, err
 	}
 
-	// Unmarshal the array fields
-	if sizesBytes != nil {
-		if err := json.Unmarshal(sizesBytes, &product.Sizes); err != nil {
-			return nil, err
-		}
-	}
-	if colorsBytes != nil {
-		if err := json.Unmarshal(colorsBytes, &product.Colors); err != nil {
-			return nil, err
-		}
-	}
+	p.Sizes = []string(sizes)
+	p.Colors = []string(colors)
 
-	return &product, nil
+	return &p, nil
 }
 
 // GetCategories retrieves all unique categories
 func GetCategories() ([]string, error) {
-	rows, err := DB.Query("SELECT DISTINCT category FROM products ORDER BY category")
+	query := `SELECT DISTINCT category FROM products ORDER BY category`
+
+	rows, err := DB.Query(query)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +154,8 @@ func GetCategories() ([]string, error) {
 	var categories []string
 	for rows.Next() {
 		var category string
-		if err := rows.Scan(&category); err != nil {
+		err := rows.Scan(&category)
+		if err != nil {
 			return nil, err
 		}
 		categories = append(categories, category)
@@ -210,85 +164,73 @@ func GetCategories() ([]string, error) {
 	return categories, nil
 }
 
-// UpdateStock updates the stock status of a product
+// UpdateStock updates the stock quantity for a product
 func UpdateStock(productID string, quantity int) error {
-	// For this implementation, we'll just update the in_stock status
-	// In a real system, you might want to track actual inventory quantities
-	_, err := DB.Exec("UPDATE products SET in_stock = $2 WHERE id = $1", productID, quantity > 0)
-	return err
+	// For this implementation, we'll just check if the product exists
+	// In a real application, you'd want to update an inventory table
+	query := `SELECT id FROM products WHERE id = $1`
+	var id string
+	err := DB.QueryRow(query, productID).Scan(&id)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("product not found")
+		}
+		return err
+	}
+
+	// In a real implementation, you would update the stock in a separate inventory table
+	// For now, we'll just return nil to indicate success
+	return nil
 }
 
 // SearchProducts searches for products based on query and price range
 func SearchProducts(query, minPrice, maxPrice string) ([]Product, error) {
-	var products []Product
-	var rows *sql.Rows
-	var err error
-
-	// Set default min and max prices if not provided
-	min := 0.0
-	max := 100000.0
-
-	if minPrice != "" {
-		fmt.Sscanf(minPrice, "%f", &min)
-	}
-	if maxPrice != "" {
-		fmt.Sscanf(maxPrice, "%f", &max)
-	}
+	baseQuery := `SELECT id, name, category, price, image, description, rating, reviews, sizes, colors, in_stock, created_at, updated_at FROM products WHERE true`
+	var args []interface{}
+	argCount := 1
 
 	if query != "" {
-		rows, err = DB.Query(`
-			SELECT id, name, category, price, image, description, rating, reviews, sizes, colors, in_stock
-			FROM products 
-			WHERE (name ILIKE $1 OR description ILIKE $1) 
-			AND price >= $2 AND price <= $3
-			ORDER BY name`, "%"+query+"%", min, max)
-	} else {
-		rows, err = DB.Query(`
-			SELECT id, name, category, price, image, description, rating, reviews, sizes, colors, in_stock
-			FROM products 
-			WHERE price >= $1 AND price <= $2
-			ORDER BY name`, min, max)
+		baseQuery += fmt.Sprintf(" AND (name ILIKE $%d OR description ILIKE $%d)", argCount, argCount+1)
+		args = append(args, "%"+query+"%", "%"+query+"%")
+		argCount += 2
 	}
 
+	if minPrice != "" {
+		baseQuery += fmt.Sprintf(" AND price >= $%d", argCount)
+		args = append(args, minPrice)
+		argCount++
+	}
+
+	if maxPrice != "" {
+		baseQuery += fmt.Sprintf(" AND price <= $%d", argCount)
+		args = append(args, maxPrice)
+		argCount++
+	}
+
+	baseQuery += " ORDER BY created_at DESC"
+
+	rows, err := DB.Query(baseQuery, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
+	var products []Product
 	for rows.Next() {
-		var product Product
-		var sizesBytes, colorsBytes []byte
-
+		var p Product
+		var sizes, colors pq.StringArray
 		err := rows.Scan(
-			&product.ID,
-			&product.Name,
-			&product.Category,
-			&product.Price,
-			&product.Image,
-			&product.Desc,
-			&product.Rating,
-			&product.Reviews,
-			&sizesBytes,
-			&colorsBytes,
-			&product.InStock,
+			&p.ID, &p.Name, &p.Category, &p.Price, &p.Image, &p.Description,
+			&p.Rating, &p.Reviews, &sizes, &colors, &p.InStock, &p.CreatedAt, &p.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
 		}
 
-		// Unmarshal the array fields
-		if sizesBytes != nil {
-			if err := json.Unmarshal(sizesBytes, &product.Sizes); err != nil {
-				return nil, err
-			}
-		}
-		if colorsBytes != nil {
-			if err := json.Unmarshal(colorsBytes, &product.Colors); err != nil {
-				return nil, err
-			}
-		}
+		p.Sizes = []string(sizes)
+		p.Colors = []string(colors)
 
-		products = append(products, product)
+		products = append(products, p)
 	}
 
 	return products, nil

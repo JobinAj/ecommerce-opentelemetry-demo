@@ -7,7 +7,7 @@ interface CheckoutModalProps {
   cartItems: CartItem[];
   totalPrice: number;
   onClose: () => void;
-  onSubmit: (paymentDetails: PaymentDetails) => void;
+  onSubmit: (paymentDetails: PaymentDetails) => Promise<void>;
 }
 
 export const CheckoutModal = ({
@@ -38,11 +38,16 @@ export const CheckoutModal = ({
     setProcessing(true);
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      onSubmit(formData);
+      // onSubmit now returns a Promise
+      await onSubmit(formData);
+
       setFormData({ cardNumber: '', cardHolder: '', expiryDate: '', cvv: '' });
       setEmail('');
       setAddress('');
+    } catch (error) {
+      // Error is handled by alert in App.tsx (or we could show it here)
+      // Just stop processing
+      console.error("Payment failed in modal", error);
     } finally {
       setProcessing(false);
     }
@@ -112,11 +117,14 @@ export const CheckoutModal = ({
 
             <div>
               <h3 className="text-lg font-bold mb-4">Payment Information</h3>
+              <p className="text-sm text-gray-600 mb-3">
+                💳 Test Mode: Use card number <code className="bg-gray-100 px-2 py-1 rounded">4242424242424242</code> with any future expiry and CVV
+              </p>
               <div className="space-y-3">
                 <input
                   type="text"
                   name="cardNumber"
-                  placeholder="Card Number"
+                  placeholder="4242424242424242 (Test Card)"
                   value={formData.cardNumber}
                   onChange={handleChange}
                   required

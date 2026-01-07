@@ -1,5 +1,6 @@
 node_modules/
 .env
+!src/frontend/.env
 # Local terraform directory (The one causing the error)
 **/.terraform/*
 
@@ -13,3 +14,14 @@ crash.log
 # Variables files (If they contain secrets)
 *.tfvars
 *.tfvars.json
+
+# Logs
+*.log
+
+# Binaries
+main
+versace-*
+
+# VS Code
+.vscode/
+

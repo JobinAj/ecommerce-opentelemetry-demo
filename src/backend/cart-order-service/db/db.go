@@ -16,14 +16,14 @@ var DB *sql.DB
 // InitDB initializes the database connection
 func InitDB() {
 	// Get database connection details from environment variables
-	host := getEnvOrDefault("DB_HOST", "localhost")
-	port := getEnvOrDefault("DB_PORT", "5432")
-	user := getEnvOrDefault("DB_USER", "postgres")
-	password := getEnvOrDefault("DB_PASSWORD", "postgres")
-	dbname := getEnvOrDefault("DB_NAME", "ecommerce")
+	host := GetEnvOrDefault("DB_HOST", "localhost")
+	port := GetEnvOrDefault("DB_PORT", "5432")
+	user := GetEnvOrDefault("DB_USER", "postgres")
+	password := GetEnvOrDefault("DB_PASSWORD", "postgres")
+	dbname := GetEnvOrDefault("DB_NAME", "ecommerce")
 
 	// Construct the connection string
-	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=disable",
+	psqlInfo := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
 		host, port, user, password, dbname)
 
 	// Open database connection
@@ -41,8 +41,8 @@ func InitDB() {
 	log.Println("Successfully connected to database!")
 }
 
-// getEnvOrDefault returns the environment variable value or a default value
-func getEnvOrDefault(key, defaultValue string) string {
+// GetEnvOrDefault returns the environment variable value or a default value
+func GetEnvOrDefault(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
 	}
@@ -56,7 +56,6 @@ func CloseDB() {
 	}
 }
 
-// CartItem represents an item in a cart
 type CartItem struct {
 	ProductID     string  `json:"productId"`
 	ProductName   string  `json:"productName"`
@@ -66,80 +65,53 @@ type CartItem struct {
 	SelectedColor string  `json:"selectedColor"`
 }
 
-// Cart represents a shopping cart
 type Cart struct {
-	ID        string      `json:"id"`
-	UserID    string      `json:"userId"`
-	Items     []CartItem  `json:"items"`
-	Total     float64     `json:"total"`
-	CreatedAt time.Time   `json:"createdAt"`
-	UpdatedAt time.Time   `json:"updatedAt"`
+	ID        string     `json:"id"`
+	UserID    string     `json:"userId"`
+	Items     []CartItem `json:"items"`
+	Total     float64    `json:"total"`
+	CreatedAt string     `json:"createdAt"`
+	UpdatedAt string     `json:"updatedAt"`
 }
 
-// Order represents an order
 type Order struct {
-	ID        string      `json:"id"`
-	UserID    string      `json:"userId"`
-	Items     []CartItem  `json:"items"`
-	Total     float64     `json:"total"`
-	Status    string      `json:"status"`
-	CreatedAt time.Time   `json:"createdAt"`
-	UpdatedAt time.Time   `json:"updatedAt"`
+	ID        string     `json:"id"`
+	UserID    string     `json:"userId"`
+	Items     []CartItem `json:"items"`
+	Total     float64    `json:"total"`
+	Status    string     `json:"status"`
+	CreatedAt string     `json:"createdAt"`
+	UpdatedAt string     `json:"updatedAt"`
 }
 
-// CreateCart creates a new cart in the database
+// CreateCart creates a new cart for a user
 func CreateCart(userID string) (*Cart, error) {
-	cartID := fmt.Sprintf("cart_%d", time.Now().UnixNano())
-	now := time.Now()
+	cartID := generateID()
+	query := `
+		INSERT INTO carts (id, user_id)
+		VALUES ($1, $2)
+		RETURNING id, user_id, total, created_at, updated_at`
 
-	// Begin transaction
-	tx, err := DB.Begin()
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback()
-
-	// Insert the cart
-	_, err = tx.Exec(`
-		INSERT INTO carts (id, user_id, total, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5)`,
-		cartID, userID, 0.0, now, now)
+	var cart Cart
+	err := DB.QueryRow(query, cartID, userID).Scan(
+		&cart.ID, &cart.UserID, &cart.Total, &cart.CreatedAt, &cart.UpdatedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	// Commit transaction
-	if err = tx.Commit(); err != nil {
-		return nil, err
-	}
-
-	return &Cart{
-		ID:        cartID,
-		UserID:    userID,
-		Items:     []CartItem{},
-		Total:     0,
-		CreatedAt: now,
-		UpdatedAt: now,
-	}, nil
+	cart.Items = []CartItem{}
+	return &cart, nil
 }
 
 // GetCart retrieves a cart by its ID
 func GetCart(cartID string) (*Cart, error) {
+	query := `SELECT id, user_id, total, created_at, updated_at FROM carts WHERE id = $1`
+
 	var cart Cart
-	var total sql.NullFloat64
-	var createdAt, updatedAt time.Time
-
-	err := DB.QueryRow(`
-		SELECT id, user_id, total, created_at, updated_at
-		FROM carts 
-		WHERE id = $1`, cartID).Scan(
-		&cart.ID,
-		&cart.UserID,
-		&total,
-		&createdAt,
-		&updatedAt,
+	err := DB.QueryRow(query, cartID).Scan(
+		&cart.ID, &cart.UserID, &cart.Total, &cart.CreatedAt, &cart.UpdatedAt,
 	)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("cart not found")
@@ -147,26 +119,14 @@ func GetCart(cartID string) (*Cart, error) {
 		return nil, err
 	}
 
-	cart.Total = total.Float64
-	cart.CreatedAt = createdAt
-	cart.UpdatedAt = updatedAt
-
 	// Get cart items
-	cart.Items, err = getCartItems(cartID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &cart, nil
-}
-
-// getCartItems retrieves all items for a given cart
-func getCartItems(cartID string) ([]CartItem, error) {
-	rows, err := DB.Query(`
+	itemsQuery := `
 		SELECT product_id, product_name, price, quantity, selected_size, selected_color
-		FROM cart_items 
+		FROM cart_items
 		WHERE cart_id = $1
-		ORDER BY created_at`, cartID)
+		ORDER BY created_at`
+
+	rows, err := DB.Query(itemsQuery, cartID)
 	if err != nil {
 		return nil, err
 	}
@@ -175,122 +135,56 @@ func getCartItems(cartID string) ([]CartItem, error) {
 	var items []CartItem
 	for rows.Next() {
 		var item CartItem
-		var quantity sql.NullInt64
-		var price sql.NullFloat64
-
 		err := rows.Scan(
-			&item.ProductID,
-			&item.ProductName,
-			&price,
-			&quantity,
-			&item.SelectedSize,
-			&item.SelectedColor,
+			&item.ProductID, &item.ProductName, &item.Price,
+			&item.Quantity, &item.SelectedSize, &item.SelectedColor,
 		)
 		if err != nil {
 			return nil, err
 		}
-
-		item.Price = price.Float64
-		item.Quantity = int(quantity.Int64)
-
 		items = append(items, item)
 	}
 
-	return items, nil
+	cart.Items = items
+	return &cart, nil
 }
 
 // AddItemToCart adds an item to the cart
 func AddItemToCart(cartID string, item CartItem) error {
-	// Begin transaction
-	tx, err := DB.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Insert the cart item
-	_, err = tx.Exec(`
+	query := `
 		INSERT INTO cart_items (cart_id, product_id, product_name, price, quantity, selected_size, selected_color)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		cartID, item.ProductID, item.ProductName, item.Price, item.Quantity, item.SelectedSize, item.SelectedColor)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`
+
+	_, err := DB.Exec(query, cartID, item.ProductID, item.ProductName, item.Price, item.Quantity, item.SelectedSize, item.SelectedColor)
 	if err != nil {
 		return err
 	}
 
-	// Update the cart total
-	total, err := calculateCartTotal(cartID)
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.Exec(`
-		UPDATE carts SET total = $1, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $2`, total, cartID)
-	if err != nil {
-		return err
-	}
-
-	// Commit transaction
-	return tx.Commit()
+	// Update cart total
+	return updateCartTotal(cartID)
 }
 
 // RemoveItemFromCart removes an item from the cart
 func RemoveItemFromCart(cartID, productID string) error {
-	// Begin transaction
-	tx, err := DB.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// Delete the cart item
-	_, err = tx.Exec(`
-		DELETE FROM cart_items 
-		WHERE cart_id = $1 AND product_id = $2`, cartID, productID)
+	query := `DELETE FROM cart_items WHERE cart_id = $1 AND product_id = $2`
+	_, err := DB.Exec(query, cartID, productID)
 	if err != nil {
 		return err
 	}
 
-	// Update the cart total
-	total, err := calculateCartTotal(cartID)
-	if err != nil {
-		return err
-	}
-
-	_, err = tx.Exec(`
-		UPDATE carts SET total = $1, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $2`, total, cartID)
-	if err != nil {
-		return err
-	}
-
-	// Commit transaction
-	return tx.Commit()
-}
-
-// calculateCartTotal calculates the total price of items in a cart
-func calculateCartTotal(cartID string) (float64, error) {
-	var total float64
-	err := DB.QueryRow(`
-		SELECT COALESCE(SUM(price * quantity), 0)
-		FROM cart_items
-		WHERE cart_id = $1`, cartID).Scan(&total)
-	if err != nil {
-		return 0, err
-	}
-	return total, nil
+	// Update cart total
+	return updateCartTotal(cartID)
 }
 
 // CreateOrder creates an order from a cart
 func CreateOrder(cartID string) (*Order, error) {
-	// Get the cart
+	// First, get the cart
 	cart, err := GetCart(cartID)
 	if err != nil {
 		return nil, err
 	}
 
-	orderID := fmt.Sprintf("ORD_%d", time.Now().UnixNano())
-	now := time.Now()
+	orderID := generateID()
 
 	// Begin transaction
 	tx, err := DB.Begin()
@@ -299,72 +193,57 @@ func CreateOrder(cartID string) (*Order, error) {
 	}
 	defer tx.Rollback()
 
-	// Insert the order
-	_, err = tx.Exec(`
-		INSERT INTO orders (id, user_id, total, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6)`,
-		orderID, cart.UserID, cart.Total, "pending", now, now)
+	// Insert order
+	orderQuery := `
+		INSERT INTO orders (id, user_id, total, status)
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, user_id, total, status, created_at, updated_at`
+
+	var order Order
+	err = tx.QueryRow(orderQuery, orderID, cart.UserID, cart.Total, "pending").Scan(
+		&order.ID, &order.UserID, &order.Total, &order.Status, &order.CreatedAt, &order.UpdatedAt,
+	)
 	if err != nil {
 		return nil, err
 	}
 
 	// Insert order items
 	for _, item := range cart.Items {
-		_, err = tx.Exec(`
+		itemQuery := `
 			INSERT INTO order_items (order_id, product_id, product_name, price, quantity, selected_size, selected_color)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-			orderID, item.ProductID, item.ProductName, item.Price, item.Quantity, item.SelectedSize, item.SelectedColor)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`
+
+		_, err = tx.Exec(itemQuery, order.ID, item.ProductID, item.ProductName, item.Price, item.Quantity, item.SelectedSize, item.SelectedColor)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	// Delete the cart and its items
+	// Clear cart items
 	_, err = tx.Exec("DELETE FROM cart_items WHERE cart_id = $1", cartID)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = tx.Exec("DELETE FROM carts WHERE id = $1", cartID)
+	// Commit transaction
+	err = tx.Commit()
 	if err != nil {
 		return nil, err
 	}
 
-	// Commit transaction
-	if err = tx.Commit(); err != nil {
-		return nil, err
-	}
-
-	return &Order{
-		ID:        orderID,
-		UserID:    cart.UserID,
-		Items:     cart.Items,
-		Total:     cart.Total,
-		Status:    "pending",
-		CreatedAt: now,
-		UpdatedAt: now,
-	}, nil
+	// Get the order with items
+	order.Items = cart.Items
+	return &order, nil
 }
 
 // GetOrder retrieves an order by its ID
 func GetOrder(orderID string) (*Order, error) {
+	query := `SELECT id, user_id, total, status, created_at, updated_at FROM orders WHERE id = $1`
+
 	var order Order
-	var total sql.NullFloat64
-	var status string
-	var createdAt, updatedAt time.Time
-
-	err := DB.QueryRow(`
-		SELECT id, user_id, total, status, created_at, updated_at
-		FROM orders 
-		WHERE id = $1`, orderID).Scan(
-		&order.ID,
-		&order.UserID,
-		&total,
-		&status,
-		&createdAt,
-		&updatedAt,
+	err := DB.QueryRow(query, orderID).Scan(
+		&order.ID, &order.UserID, &order.Total, &order.Status, &order.CreatedAt, &order.UpdatedAt,
 	)
-
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("order not found")
@@ -372,27 +251,14 @@ func GetOrder(orderID string) (*Order, error) {
 		return nil, err
 	}
 
-	order.Total = total.Float64
-	order.Status = status
-	order.CreatedAt = createdAt
-	order.UpdatedAt = updatedAt
-
 	// Get order items
-	order.Items, err = getOrderItems(orderID)
-	if err != nil {
-		return nil, err
-	}
-
-	return &order, nil
-}
-
-// getOrderItems retrieves all items for a given order
-func getOrderItems(orderID string) ([]CartItem, error) {
-	rows, err := DB.Query(`
+	itemsQuery := `
 		SELECT product_id, product_name, price, quantity, selected_size, selected_color
-		FROM order_items 
+		FROM order_items
 		WHERE order_id = $1
-		ORDER BY created_at`, orderID)
+		ORDER BY created_at`
+
+	rows, err := DB.Query(itemsQuery, orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -401,46 +267,32 @@ func getOrderItems(orderID string) ([]CartItem, error) {
 	var items []CartItem
 	for rows.Next() {
 		var item CartItem
-		var quantity sql.NullInt64
-		var price sql.NullFloat64
-
 		err := rows.Scan(
-			&item.ProductID,
-			&item.ProductName,
-			&price,
-			&quantity,
-			&item.SelectedSize,
-			&item.SelectedColor,
+			&item.ProductID, &item.ProductName, &item.Price,
+			&item.Quantity, &item.SelectedSize, &item.SelectedColor,
 		)
 		if err != nil {
 			return nil, err
 		}
-
-		item.Price = price.Float64
-		item.Quantity = int(quantity.Int64)
-
 		items = append(items, item)
 	}
 
-	return items, nil
+	order.Items = items
+	return &order, nil
 }
 
 // UpdateOrderStatus updates the status of an order
 func UpdateOrderStatus(orderID, status string) error {
-	_, err := DB.Exec(`
-		UPDATE orders 
-		SET status = $1, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $2`, status, orderID)
+	query := `UPDATE orders SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2`
+	_, err := DB.Exec(query, status, orderID)
 	return err
 }
 
 // GetUserOrders retrieves all orders for a user
 func GetUserOrders(userID string) ([]Order, error) {
-	rows, err := DB.Query(`
-		SELECT id, user_id, total, status, created_at, updated_at
-		FROM orders 
-		WHERE user_id = $1
-		ORDER BY created_at DESC`, userID)
+	query := `SELECT id, user_id, total, status, created_at, updated_at FROM orders WHERE user_id = $1 ORDER BY created_at DESC`
+
+	rows, err := DB.Query(query, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -449,29 +301,9 @@ func GetUserOrders(userID string) ([]Order, error) {
 	var orders []Order
 	for rows.Next() {
 		var order Order
-		var total sql.NullFloat64
-		var status string
-		var createdAt, updatedAt time.Time
-
 		err := rows.Scan(
-			&order.ID,
-			&order.UserID,
-			&total,
-			&status,
-			&createdAt,
-			&updatedAt,
+			&order.ID, &order.UserID, &order.Total, &order.Status, &order.CreatedAt, &order.UpdatedAt,
 		)
-		if err != nil {
-			return nil, err
-		}
-
-		order.Total = total.Float64
-		order.Status = status
-		order.CreatedAt = createdAt
-		order.UpdatedAt = updatedAt
-
-		// Get order items
-		order.Items, err = getOrderItems(order.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -480,4 +312,27 @@ func GetUserOrders(userID string) ([]Order, error) {
 	}
 
 	return orders, nil
+}
+
+// updateCartTotal recalculates and updates the cart total
+func updateCartTotal(cartID string) error {
+	query := `
+		UPDATE carts
+		SET total = (
+			SELECT COALESCE(SUM(price * quantity), 0)
+			FROM cart_items
+			WHERE cart_id = $1
+		),
+		updated_at = CURRENT_TIMESTAMP
+		WHERE id = $1`
+
+	_, err := DB.Exec(query, cartID)
+	return err
+}
+
+// generateID generates a unique ID
+func generateID() string {
+	// In a real application, you'd want to use a proper UUID generator
+	// For now, we'll use a simple timestamp-based ID
+	return fmt.Sprintf("id_%d", time.Now().UnixNano())
 }

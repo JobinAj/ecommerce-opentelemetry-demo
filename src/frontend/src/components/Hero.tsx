@@ -4,35 +4,31 @@ interface HeroProps {
 
 export const Hero = ({ onShopClick }: HeroProps) => {
   return (
-    <div className="relative w-full h-96 md:h-[500px] bg-gradient-to-r from-gray-900 via-black to-gray-900 overflow-hidden">
+    <div className="relative w-full h-[90vh] bg-black overflow-hidden">
       <div
-        className="absolute inset-0 opacity-20"
+        className="absolute inset-0 opacity-60"
         style={{
           backgroundImage:
-            'url("https://images.pexels.com/photos/3622613/pexels-photo-3622613.jpeg?auto=compress&cs=tinysrgb&w=1200")',
+            'url("https://images.unsplash.com/photo-1549497538-303791108f95?q=80&w=1920&auto=format&fit=crop")',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
         }}
       />
 
-      <div className="relative h-full flex items-center justify-center">
-        <div className="text-center space-y-6 px-4">
-          <h1 className="text-5xl md:text-7xl font-bold text-white tracking-tighter">
-            VERSACE LUXURY
-          </h1>
-          <p className="text-xl md:text-2xl text-gray-300 max-w-2xl mx-auto">
-            Experience the epitome of Italian elegance and sophisticated design
-          </p>
-          <button
-            onClick={onShopClick}
-            className="inline-block px-8 py-4 bg-yellow-500 hover:bg-yellow-600 text-black font-bold text-lg rounded-lg transition-colors duration-300 mt-6"
-          >
-            SHOP NOW
-          </button>
-        </div>
+      <div className="relative h-full flex flex-col items-center justify-center text-center px-4">
+        <h2 className="text-white text-sm md:text-base font-bold tracking-[0.3em] mb-4">
+          FALL WINTER 2026
+        </h2>
+        <h1 className="text-5xl md:text-8xl font-serif font-bold text-white mb-8">
+          LA GRECA
+        </h1>
+        <button
+          onClick={onShopClick}
+          className="px-10 py-4 bg-white text-black font-bold text-sm tracking-widest hover:bg-versace-gold hover:text-white transition-colors duration-300 rounded-none"
+        >
+          DISCOVER COLLECTION
+        </button>
       </div>
-
-      <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-gray-50 to-transparent" />
     </div>
   );
 };

@@ -1,0 +1,68 @@
+digraph VPCFlow {
+    rankdir=TB;
+    label="Ecommerce VPC & RDS Traffic Flow";
+    labelloc="t";
+    fontsize=16;
+    
+    node [shape=box, style=rounded, fontname="Arial", fontsize=12];
+    
+    // External
+    internet [label="Internet", fillcolor=yellow, style="rounded,filled", shape=ellipse];
+    
+    // Load Balancer
+    alb [label="Application Load Balancer\n(public subnets)", fillcolor=orange, style="rounded,filled"];
+    
+    // VPC
+    vpc [label="VPC\n(10.0.0.0/16)", fillcolor=lightblue, style="rounded,filled", width=2];
+    
+    // Public Subnets
+    public1 [label="Public Subnet A\n(10.0.101.0/24)", fillcolor=lightyellow, style="rounded,filled"];
+    public2 [label="Public Subnet B\n(10.0.102.0/24)", fillcolor=lightyellow, style="rounded,filled"];
+    
+    // Private Subnets
+    private1 [label="Private Subnet A\n(10.0.1.0/24)", fillcolor=lightcyan, style="rounded,filled"];
+    private2 [label="Private Subnet B\n(10.0.2.0/24)", fillcolor=lightcyan, style="rounded,filled"];
+    
+    // NAT Gateway
+    nat [label="NAT Gateway", fillcolor=lightgray, style="rounded,filled"];
+    
+    // EKS Nodes
+    eks_nodes [label="EKS Worker Nodes\n(private subnets)", fillcolor=orange, style="rounded,filled"];
+    
+    // RDS Database
+    rds [label="RDS PostgreSQL\n(private subnets)\necom-eks-cluster-postgres-db", fillcolor=red, style="rounded,filled", fontcolor=white];
+    
+    // VPC Endpoints
+    vpc_endpoint [label="VPC Endpoints\n(SSM, KMS, etc.)", fillcolor=lightpink, style="rounded,filled"];
+    
+    // Route Tables
+    rt_public [label="Public Route Table", fillcolor=lightgreen, style="rounded,filled"];
+    rt_private [label="Private Route Table", fillcolor=lightgreen, style="rounded,filled"];
+    
+    // Traffic flows
+    internet -> alb [label="Inbound Traffic", color=blue, style=bold];
+    alb -> eks_nodes [label="App Traffic", color=blue, style=bold];
+    eks_nodes -> rds [label="Database Queries\n(encrypted)", color=red, style=bold];
+    eks_nodes -> nat [label="Outbound Access", color=gray, style=dashed];
+    nat -> internet [label="Outbound Traffic", color=gray, style=dashed];
+    private1 -> vpc_endpoint;
+    private2 -> vpc_endpoint;
+    
+    // Subnet associations
+    vpc -> {public1, public2, private1, private2};
+    public1 -> {alb, rt_public};
+    public2 -> {alb, rt_public};
+    private1 -> {eks_nodes, rds, rt_private};
+    private2 -> {eks_nodes, rds, rt_private};
+    
+    // Legend
+    subgraph cluster_legend {
+        label="Traffic Flow Legend";
+        style=dashed;
+        fontsize=10;
+        
+        legend_in [label="Inbound Traffic", color=blue, style=bold];
+        legend_out [label="Outbound Traffic", color=gray, style=dashed];
+        legend_internal [label="Internal Traffic", color=red, style=bold];
+    }
+}
