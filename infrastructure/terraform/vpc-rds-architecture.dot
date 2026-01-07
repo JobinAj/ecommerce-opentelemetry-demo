@@ -1,0 +1,77 @@
+digraph VPCArchitecture {
+    rankdir=TB;
+    label="Ecommerce VPC & RDS Architecture";
+    labelloc="t";
+    fontsize=16;
+    
+    node [shape=box, style=rounded, fontname="Arial", fontsize=12];
+    
+    // VPC
+    vpc [label="VPC\n(10.0.0.0/16)\necom-eks-cluster-vpc", fillcolor=lightblue, style="rounded,filled", width=2];
+    
+    // Internet Gateway
+    igw [label="Internet Gateway\nigw-xxxx", fillcolor=lightgray, style="rounded,filled"];
+    
+    // Public Subnets
+    public1 [label="Public Subnet A\n(10.0.101.0/24)", fillcolor=lightyellow, style="rounded,filled"];
+    public2 [label="Public Subnet B\n(10.0.102.0/24)", fillcolor=lightyellow, style="rounded,filled"];
+    
+    // Private Subnets
+    private1 [label="Private Subnet A\n(10.0.1.0/24)", fillcolor=lightcyan, style="rounded,filled"];
+    private2 [label="Private Subnet B\n(10.0.2.0/24)", fillcolor=lightcyan, style="rounded,filled"];
+    
+    // NAT Gateway
+    nat [label="NAT Gateway\nnat-xxxx", fillcolor=lightgray, style="rounded,filled"];
+    
+    // EKS Cluster
+    eks [label="EKS Cluster\necom-eks-cluster", fillcolor=orange, style="rounded,filled"];
+    
+    // RDS Database
+    rds [label="RDS PostgreSQL\necom-eks-cluster-postgres-db\n(Private Subnet)", fillcolor=red, style="rounded,filled", fontcolor=white];
+    
+    // Route Tables
+    rt_public [label="Public Route Table", fillcolor=lightgreen, style="rounded,filled"];
+    rt_private [label="Private Route Table", fillcolor=lightgreen, style="rounded,filled"];
+    
+    // VPC Endpoints
+    vpc_endpoint [label="VPC Endpoints\n(SSM, SSM Messages,\nEC2 Messages, KMS)", fillcolor=lightpink, style="rounded,filled"];
+    
+    // Connections
+    vpc -> {public1, public2, private1, private2};
+    
+    igw -> public1;
+    igw -> public2;
+    
+    public1 -> nat;
+    public2 -> nat;
+    
+    nat -> rt_private;
+    
+    rt_public -> public1;
+    rt_public -> public2;
+    rt_private -> private1;
+    rt_private -> private2;
+    
+    private1 -> rds;
+    private2 -> rds;
+    
+    private1 -> vpc_endpoint;
+    private2 -> vpc_endpoint;
+    
+    public1 -> eks;
+    public2 -> eks;
+    
+    eks -> rds [label="Database Access", style=dashed, color=blue];
+    
+    // Legend
+    subgraph cluster_legend {
+        label="Legend";
+        style=dashed;
+        fontsize=10;
+        
+        legend_vpc [label="VPC", fillcolor=lightblue, style="rounded,filled", shape=box];
+        legend_public [label="Public Subnet", fillcolor=lightyellow, style="rounded,filled", shape=box];
+        legend_private [label="Private Subnet", fillcolor=lightcyan, style="rounded,filled", shape=box];
+        legend_rds [label="RDS Database", fillcolor=red, style="rounded,filled", shape=box, fontcolor=white];
+    }
+}

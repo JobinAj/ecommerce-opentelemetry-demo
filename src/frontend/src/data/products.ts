@@ -1,4 +1,12 @@
 import { Product } from '../types';
+import silkBaroqueShirt from '../assets/silk_baroque_shirt.png';
+import goldMedusaBlazer from '../assets/gold_medusa_blazer.png';
+import versacePrintTshirt from '../assets/versace_print_tshirt.png';
+import tailoredSilkTrousers from '../assets/tailored_silk_trousers.png';
+import blackLeatherJacket from '../assets/black_leather_jacket.png';
+import goldChainDress from '../assets/gold_chain_dress.png';
+import premiumDenimJeans from '../assets/premium_denim_jeans.png';
+import silkEveningGown from '../assets/silk_evening_gown.png';
 
 export const products: Product[] = [
   {
@@ -6,7 +14,7 @@ export const products: Product[] = [
     name: 'Silk Baroque Shirt',
     category: 'Tops',
     price: 1200,
-    image: 'https://images.pexels.com/photos/3622613/pexels-photo-3622613.jpeg?auto=compress&cs=tinysrgb&w=600',
+    image: silkBaroqueShirt,
     description: 'Luxurious silk shirt with signature Versace Baroque pattern. Perfect for special occasions.',
     rating: 4.8,
     reviews: 124,
@@ -19,7 +27,7 @@ export const products: Product[] = [
     name: 'Gold Medusa Blazer',
     category: 'Outerwear',
     price: 2500,
-    image: 'https://images.pexels.com/photos/3622614/pexels-photo-3622614.jpeg?auto=compress&cs=tinysrgb&w=600',
+    image: goldMedusaBlazer,
     description: 'Statement blazer featuring iconic Medusa head emblem. Tailored fit with premium wool blend.',
     rating: 4.9,
     reviews: 89,
@@ -32,7 +40,7 @@ export const products: Product[] = [
     name: 'Versace Print T-Shirt',
     category: 'Tops',
     price: 450,
-    image: 'https://images.pexels.com/photos/3622615/pexels-photo-3622615.jpeg?auto=compress&cs=tinysrgb&w=600',
+    image: versacePrintTshirt,
     description: 'Classic cotton t-shirt with Versace logo print. Comfortable and iconic.',
     rating: 4.6,
     reviews: 256,
@@ -45,7 +53,7 @@ export const products: Product[] = [
     name: 'Tailored Silk Trousers',
     category: 'Bottoms',
     price: 1800,
-    image: 'https://images.pexels.com/photos/3622616/pexels-photo-3622616.jpeg?auto=compress&cs=tinysrgb&w=600',
+    image: tailoredSilkTrousers,
     description: 'Elegant silk trousers with perfect drape. Timeless elegance for any wardrobe.',
     rating: 4.7,
     reviews: 142,
@@ -58,7 +66,7 @@ export const products: Product[] = [
     name: 'Black Leather Jacket',
     category: 'Outerwear',
     price: 3200,
-    image: 'https://images.pexels.com/photos/3622617/pexels-photo-3622617.jpeg?auto=compress&cs=tinysrgb&w=600',
+    image: blackLeatherJacket,
     description: 'Premium leather jacket with signature detailing. Iconic luxury piece.',
     rating: 4.9,
     reviews: 198,
@@ -71,7 +79,7 @@ export const products: Product[] = [
     name: 'Gold Chain Dress',
     category: 'Dresses',
     price: 2800,
-    image: 'https://images.pexels.com/photos/3622618/pexels-photo-3622618.jpeg?auto=compress&cs=tinysrgb&w=600',
+    image: goldChainDress,
     description: 'Stunning dress with gold chain embellishments. Perfect for evening wear.',
     rating: 4.8,
     reviews: 167,
@@ -84,7 +92,7 @@ export const products: Product[] = [
     name: 'Premium Denim Jeans',
     category: 'Bottoms',
     price: 950,
-    image: 'https://images.pexels.com/photos/3622619/pexels-photo-3622619.jpeg?auto=compress&cs=tinysrgb&w=600',
+    image: premiumDenimJeans,
     description: 'High-quality denim with Versace branding. Modern and versatile.',
     rating: 4.7,
     reviews: 203,
@@ -97,7 +105,7 @@ export const products: Product[] = [
     name: 'Silk Evening Gown',
     category: 'Dresses',
     price: 4500,
-    image: 'https://images.pexels.com/photos/3622620/pexels-photo-3622620.jpeg?auto=compress&cs=tinysrgb&w=600',
+    image: silkEveningGown,
     description: 'Breathtaking silk gown for special occasions. Haute couture elegance.',
     rating: 5.0,
     reviews: 87,

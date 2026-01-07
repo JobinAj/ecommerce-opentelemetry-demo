@@ -5,10 +5,15 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/mux"
-	"versace-payment-service/db"
+	"github.com/stripe/stripe-go/v72"
+	"github.com/stripe/stripe-go/v72/client"
+	"payment-service/db"
 )
+
+var sc *client.API
 
 func enableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -65,16 +70,72 @@ func processPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payment, err := db.CreatePayment(req)
+	// Parse expiry date
+	var expMonth, expYear string
+	if len(req.ExpiryDate) == 5 { // MM/YY
+		expMonth = req.ExpiryDate[:2]
+		expYear = "20" + req.ExpiryDate[3:]
+	} else if len(req.ExpiryDate) == 7 { // MM/YYYY
+		expMonth = req.ExpiryDate[:2]
+		expYear = req.ExpiryDate[3:]
+	} else {
+		// Should be caught by validation, but just in case
+		expMonth = "12"
+		expYear = "2025"
+	}
+
+	// 1. Create a Token
+	tokenParams := &stripe.TokenParams{
+		Card: &stripe.CardParams{
+			Number:   stripe.String(req.CardNumber),
+			ExpMonth: stripe.String(expMonth),
+			ExpYear:  stripe.String(expYear),
+			CVC:      stripe.String(req.CVV),
+		},
+	}
+
+	token, err := sc.Tokens.New(tokenParams)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(db.PaymentResponse{
+			Success: false,
+			Message: "Stripe Token Error: " + err.Error(),
+		})
+		return
+	}
+
+	// 2. Create a Charge
+	chargeParams := &stripe.ChargeParams{
+		Amount:   stripe.Int64(int64(req.Amount * 100)), // Amount in cents
+		Currency: stripe.String(req.Currency),
+		Source:   &stripe.SourceParams{Token: stripe.String(token.ID)},
+	}
+
+	charge, err := sc.Charges.New(chargeParams)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(db.PaymentResponse{
+			Success: false,
+			Message: "Stripe Charge Error: " + err.Error(),
+		})
+		return
+	}
+
+	// 3. Save to DB using Stripe Charge ID
+	payment, err := db.CreatePayment(req, charge.ID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(db.PaymentResponse{
+			Success: false,
+			Message: "Database Error: " + err.Error(),
+		})
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(db.PaymentResponse{
 		Success: true,
-		Message: "Payment processed successfully",
+		Message: "Payment processed successfully via Stripe",
 		Payment: *payment,
 	})
 }
@@ -92,7 +153,8 @@ func getPayment(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Payment not found"})
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -112,7 +174,8 @@ func getPaymentByOrderID(w http.ResponseWriter, r *http.Request) {
 			json.NewEncoder(w).Encode(map[string]string{"error": "Payment not found for this order"})
 			return
 		}
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -127,13 +190,15 @@ func refundPayment(w http.ResponseWriter, r *http.Request) {
 
 	err := db.UpdatePaymentStatus(paymentID, "refunded")
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
 	payment, err := db.GetPayment(paymentID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 
@@ -144,19 +209,31 @@ func main() {
 	db.InitDB()
 	defer db.CloseDB()
 
+	// Initialize Stripe Client pointing to stripe-mock
+	stripeKey := os.Getenv("STRIPE_SECRET_KEY")
+	if stripeKey == "" {
+		stripeKey = "sk_test_default_mock_key"
+	}
+	sc = &client.API{}
+	sc.Init(stripeKey, &stripe.Backends{
+		API: stripe.GetBackendWithConfig(stripe.APIBackend, &stripe.BackendConfig{
+			URL: stripe.String("http://localhost:12111"), // Address of stripe-mock
+		}),
+	})
+
 	r := mux.NewRouter()
 
 	r.Use(enableCORS)
 
-	r.HandleFunc("/api/payments", processPayment).Methods("POST")
-	r.HandleFunc("/api/payments/{paymentId}", getPayment).Methods("GET")
-	r.HandleFunc("/api/payments/order/{orderId}", getPaymentByOrderID).Methods("GET")
-	r.HandleFunc("/api/payments/{paymentId}/refund", refundPayment).Methods("POST")
+	r.HandleFunc("/api/payments", processPayment).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/payments/{paymentId}", getPayment).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/payments/order/{orderId}", getPaymentByOrderID).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/payments/{paymentId}/refund", refundPayment).Methods("POST", "OPTIONS")
 
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
-	}).Methods("GET")
+	}).Methods("GET", "OPTIONS")
 
 	port := ":8003"
 	fmt.Printf("Payment Service running on http://localhost%s\n", port)

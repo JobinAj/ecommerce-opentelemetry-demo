@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
-	"versace-cart-order-service/db"
+	"cart-order-service/db"
 )
 
 func enableCORS(next http.Handler) http.Handler {
@@ -195,20 +195,20 @@ func main() {
 
 	r.Use(enableCORS)
 
-	r.HandleFunc("/api/carts", createCart).Methods("POST")
-	r.HandleFunc("/api/carts/{cartId}", getCart).Methods("GET")
-	r.HandleFunc("/api/carts/{cartId}/items", addItemToCart).Methods("POST")
-	r.HandleFunc("/api/carts/{cartId}/items/{productId}", removeItemFromCart).Methods("DELETE")
+	r.HandleFunc("/api/carts", createCart).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/carts/{cartId}", getCart).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/carts/{cartId}/items", addItemToCart).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/carts/{cartId}/items/{productId}", removeItemFromCart).Methods("DELETE", "OPTIONS")
 
-	r.HandleFunc("/api/orders", createOrder).Methods("POST")
-	r.HandleFunc("/api/orders/{orderId}", getOrder).Methods("GET")
-	r.HandleFunc("/api/orders/{orderId}/status", updateOrderStatus).Methods("PUT")
-	r.HandleFunc("/api/users/{userId}/orders", getUserOrders).Methods("GET")
+	r.HandleFunc("/api/carts/{cartId}/orders", createOrder).Methods("POST", "OPTIONS")
+	r.HandleFunc("/api/orders/{orderId}", getOrder).Methods("GET", "OPTIONS")
+	r.HandleFunc("/api/orders/{orderId}/status", updateOrderStatus).Methods("PUT", "OPTIONS")
+	r.HandleFunc("/api/users/{userId}/orders", getUserOrders).Methods("GET", "OPTIONS")
 
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
-	}).Methods("GET")
+	}).Methods("GET", "OPTIONS")
 
 	port := ":8002"
 	fmt.Printf("Cart & Order Service running on http://localhost%s\n", port)
