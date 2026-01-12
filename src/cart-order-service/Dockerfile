@@ -1,5 +1,5 @@
 # Use the official Golang alpine image as the base image
-FROM golang:1.21-alpine as builder
+FROM golang:1.24-alpine as builder
 
 # Set the working directory inside the container
 WORKDIR /app
@@ -11,7 +11,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy the source code into the container
-COPY main.go .
+COPY . .
 
 # Build the Go application
 RUN go build -o service main.go
