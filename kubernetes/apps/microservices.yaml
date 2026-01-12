@@ -1,0 +1,190 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+  namespace: apps
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: product-service
+  template:
+    metadata:
+      labels:
+        app: product-service
+      annotations:
+        instrumentation.opentelemetry.io/inject-sdk: "observability/otel-instrumentation"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: product-service
+        image: jobinaj/product-service:latest
+        ports:
+        - containerPort: 8001
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8001
+          initialDelaySeconds: 2
+          periodSeconds: 5
+        env:
+        - name: DB_HOST
+          value: "REPLACE_WITH_RDS_ENDPOINT"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: password
+        - name: DB_NAME
+          value: "ecommercedb"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: product-service
+  namespace: apps
+spec:
+  selector:
+    app: product-service
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 8001
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: apps
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: payment-service
+  template:
+    metadata:
+      labels:
+        app: payment-service
+      annotations:
+        instrumentation.opentelemetry.io/inject-sdk: "observability/otel-instrumentation"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: payment-service
+        image: jobinaj/payment-service:latest
+        ports:
+        - containerPort: 8003
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8003
+          initialDelaySeconds: 2
+          periodSeconds: 5
+        env:
+        - name: DB_HOST
+          value: "REPLACE_WITH_RDS_ENDPOINT"
+        - name: STRIPE_SECRET_KEY
+          value: "sk_test_mock"
+        - name: STRIPE_API_URL
+          value: "http://stripe-mock:12111"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: apps
+spec:
+  selector:
+    app: payment-service
+  ports:
+  - protocol: TCP
+    port: 8081
+    targetPort: 8003
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cart-order-service
+  namespace: apps
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cart-order-service
+  template:
+    metadata:
+      labels:
+        app: cart-order-service
+      annotations:
+        instrumentation.opentelemetry.io/inject-sdk: "observability/otel-instrumentation"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+      - name: cart-order-service
+        image: jobinaj/cart-order-service:latest
+        ports:
+        - containerPort: 8002
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8002
+          initialDelaySeconds: 2
+          periodSeconds: 5
+        env:
+        - name: DB_HOST
+          value: "REPLACE_WITH_RDS_ENDPOINT"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: password
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart-order-service
+  namespace: apps
+spec:
+  selector:
+    app: cart-order-service
+  ports:
+  - protocol: TCP
+    port: 8082
+    targetPort: 8002

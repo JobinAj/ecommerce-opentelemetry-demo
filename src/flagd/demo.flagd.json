@@ -1,0 +1,28 @@
+{
+    "flags": {
+        "productCatalogFailure": {
+            "state": "ENABLED",
+            "variants": {
+                "on": true,
+                "off": false
+            },
+            "defaultVariant": "off"
+        },
+        "paymentServiceFailure": {
+            "state": "ENABLED",
+            "variants": {
+                "on": true,
+                "off": false
+            },
+            "defaultVariant": "off"
+        },
+        "cartServiceFailure": {
+            "state": "ENABLED",
+            "variants": {
+                "on": true,
+                "off": false
+            },
+            "defaultVariant": "off"
+        }
+    }
+}

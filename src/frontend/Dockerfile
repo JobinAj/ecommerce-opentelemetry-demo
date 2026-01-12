@@ -22,8 +22,16 @@ FROM node:20-alpine
 # Install a simple web server to serve static files
 RUN npm install -g serve
 
-# Set working directory
+# Create a non-root user
+RUN addgroup -S ecom && \
+    adduser -S ecom -G ecom -u 1000
+
+# Set working directory and ownership
 WORKDIR /app
+RUN chown ecom:ecom /app
+
+# Use the non-root user
+USER ecom
 
 # Copy the built application from the builder stage
 COPY --from=builder /app/dist ./dist

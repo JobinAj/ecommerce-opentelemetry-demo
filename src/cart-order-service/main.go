@@ -1,13 +1,17 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 
-	"github.com/gorilla/mux"
 	"cart-order-service/db"
+
+	"github.com/gorilla/mux"
+	flagd "github.com/open-feature/go-sdk-contrib/providers/flagd/pkg"
+	"github.com/open-feature/go-sdk/openfeature"
 )
 
 func enableCORS(next http.Handler) http.Handler {
@@ -27,6 +31,14 @@ func enableCORS(next http.Handler) http.Handler {
 
 func createCart(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Feature Flag Check
+	client := openfeature.NewClient("cart-order-service")
+	failureEnabled, err := client.BooleanValue(context.Background(), "cartServiceFailure", false, openfeature.EvaluationContext{})
+	if err == nil && failureEnabled {
+		http.Error(w, "Simulated Cart Service Failure", http.StatusInternalServerError)
+		return
+	}
 
 	var req map[string]string
 	json.NewDecoder(r.Body).Decode(&req)
@@ -188,6 +200,13 @@ func getUserOrders(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Initialize OpenFeature provider
+	provider, err := flagd.NewProvider()
+	if err != nil {
+		log.Fatalf("Failed to create flagd provider: %v", err)
+	}
+	openfeature.SetProvider(provider)
+
 	db.InitDB()
 	defer db.CloseDB()
 

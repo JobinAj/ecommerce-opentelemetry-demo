@@ -8,6 +8,13 @@ This directory contains Terraform configurations for deploying the infrastructur
 - **EKS**: Elastic Kubernetes Service cluster for running containerized applications
 - **RDS**: PostgreSQL database instance for data persistence
 
+### Resilience & Health Checks
+- **Probes**: All application deployments now include `livenessProbe` and `readinessProbe`.
+    - Microservices use the `/health` endpoint.
+    - Frontend uses the root `/` path.
+    - Infrastructure services use TCP socket checks to ensure connectivity.
+- **Auto-Scaling**: Configured with replicas (2 for apps, 3 for Locust workers) to demonstrate high availability in the private subnet.
+
 ## Variables
 
 The following variables need to be configured:

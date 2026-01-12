@@ -1,16 +1,21 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 
+	"payment-service/db"
+
 	"github.com/gorilla/mux"
 	"github.com/stripe/stripe-go/v72"
 	"github.com/stripe/stripe-go/v72/client"
-	"payment-service/db"
+
+	flagd "github.com/open-feature/go-sdk-contrib/providers/flagd/pkg"
+	"github.com/open-feature/go-sdk/openfeature"
 )
 
 var sc *client.API
@@ -32,6 +37,18 @@ func enableCORS(next http.Handler) http.Handler {
 
 func processPayment(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Feature Flag Check
+	client := openfeature.NewClient("payment-service")
+	failureEnabled, err := client.BooleanValue(context.Background(), "paymentServiceFailure", false, openfeature.EvaluationContext{})
+	if err == nil && failureEnabled {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(db.PaymentResponse{
+			Success: false,
+			Message: "Simulated Payment Service Failure",
+		})
+		return
+	}
 
 	var req db.PaymentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -206,6 +223,13 @@ func refundPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Initialize OpenFeature provider
+	provider, err := flagd.NewProvider()
+	if err != nil {
+		log.Fatalf("Failed to create flagd provider: %v", err)
+	}
+	openfeature.SetProvider(provider)
+
 	db.InitDB()
 	defer db.CloseDB()
 

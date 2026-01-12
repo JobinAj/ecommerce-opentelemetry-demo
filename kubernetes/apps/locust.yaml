@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: locust-file
+  namespace: apps
+data:
+  locustfile.py: |
+    import os
+    from locust import HttpUser, task, between
+
+    PRODUCT_SERVICE_HOST = os.getenv("PRODUCT_SERVICE_URL", "http://product-service.apps.svc.cluster.local:8080")
+    CART_SERVICE_HOST = os.getenv("CART_SERVICE_URL", "http://cart-order-service.apps.svc.cluster.local:8082")
+    PAYMENT_SERVICE_HOST = os.getenv("PAYMENT_SERVICE_URL", "http://payment-service.apps.svc.cluster.local:8081")
+
+    class WebsiteUser(HttpUser):
+        wait_time = between(1, 5)
+
+        def on_start(self):
+            self.cart_id = None
+            self.user_id = "user_" + os.urandom(4).hex()
+
+        @task(3)
+        def browse_products(self):
+            # Visit product listing
+            self.client.get(f"{PRODUCT_SERVICE_HOST}/api/products", name="/api/products")
+
+        @task(1)
+        def checkout_flow(self):
+            # 1. Create Cart
+            with self.client.post(f"{CART_SERVICE_HOST}/api/carts", json={"userId": self.user_id}, name="/api/carts [Create]", catch_response=True) as response:
+                if response.status_code == 200:
+                    self.cart_id = response.json().get("id")
+                else:
+                    response.failure(f"Failed to create cart: {response.text}")
+                    return
+
+            # 2. Add Item to Cart
+            item = {
+                "productId": "101",
+                "productName": "Test Product",
+                "price": 50.0,
+                "quantity": 1,
+                "selectedSize": "M",
+                "selectedColor": "Blue"
+            }
+            self.client.post(f"{CART_SERVICE_HOST}/api/carts/{self.cart_id}/items", json=item, name="/api/carts/{id}/items [Add]")
+
+            # 3. Create Order
+            order_id = None
+            with self.client.post(f"{CART_SERVICE_HOST}/api/carts/{self.cart_id}/orders", name="/api/carts/{id}/orders [Create]", catch_response=True) as response:
+                if response.status_code == 200:
+                    order_id = response.json().get("id")
+                else:
+                    response.failure(f"Failed to create order: {response.text}")
+                    return
+
+            # 4. Process Payment
+            payment_payload = {
+                "orderId": order_id,
+                "amount": 50.0,
+                "currency": "USD",
+                "cardNumber": "4242424242424242",
+                "cvv": "123",
+                "expiryDate": "12/25"
+            }
+            self.client.post(f"{PAYMENT_SERVICE_HOST}/api/payments", json=payment_payload, name="/api/payments [Pay]")
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locust
+  namespace: apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: locust
+  template:
+    metadata:
+      labels:
+        app: locust
+    spec:
+      containers:
+      - name: locust
+        image: locustio/locust:latest
+        ports:
+        - containerPort: 8089
+        env:
+        - name: LOCUST_LOCUSTFILE
+          value: /mnt/locust/locustfile.py
+        volumeMounts:
+        - name: locust-file
+          mountPath: /mnt/locust/
+      volumes:
+      - name: locust-file
+        configMap:
+          name: locust-file
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: locust
+  namespace: apps
+spec:
+  selector:
+    app: locust
+  ports:
+  - port: 8089
+    targetPort: 8089
+  type: NodePort

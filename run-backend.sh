@@ -2,7 +2,7 @@
 
 # Load environment variables from .env file
 set -a
-source /root/ecommerce-opentelemetry-demo/src/backend/.env
+source /root/ecommerce-opentelemetry-demo/.env
 set +a
 
 echo "Environment variables loaded:"
@@ -11,8 +11,8 @@ echo "DB_PORT: $DB_PORT"
 echo "DB_USER: $DB_USER"
 echo "DB_NAME: $DB_NAME"
 
-# Navigate to the backend directory
-cd /root/ecommerce-opentelemetry-demo/src/backend
+# Navigate to the src directory
+cd /root/ecommerce-opentelemetry-demo/src
 
 # Build the services
 echo "Building backend services..."

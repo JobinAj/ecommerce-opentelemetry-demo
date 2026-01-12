@@ -1,16 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 
-	"github.com/gorilla/mux"
 	"product-service/db"
+
+	"github.com/gorilla/mux"
+	flagd "github.com/open-feature/go-sdk-contrib/providers/flagd/pkg"
+	"github.com/open-feature/go-sdk/openfeature"
 )
-
-
 
 func enableCORS(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -29,6 +31,15 @@ func enableCORS(next http.Handler) http.Handler {
 
 func getAllProducts(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	// Feature Flag Check
+	client := openfeature.NewClient("product-service")
+	failureEnabled, err := client.BooleanValue(context.Background(), "productCatalogFailure", false, openfeature.EvaluationContext{})
+	if err == nil && failureEnabled {
+		http.Error(w, "Simulated Product Catalog Failure", http.StatusInternalServerError)
+		return
+	}
+
 	category := r.URL.Query().Get("category")
 	search := r.URL.Query().Get("search")
 
@@ -107,6 +118,13 @@ func searchProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Initialize OpenFeature provider
+	provider, err := flagd.NewProvider()
+	if err != nil {
+		log.Fatalf("Failed to create flagd provider: %v", err)
+	}
+	openfeature.SetProvider(provider)
+
 	db.InitDB()
 	defer db.CloseDB()
 

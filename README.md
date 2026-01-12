@@ -50,19 +50,19 @@ You need to start each service in a separate terminal. Ensure the DB environment
 
 **Product Service (Port 8001):**
 ```bash
-cd src/backend/product-service
+cd src/product-service
 go run main.go
 ```
 
 **Cart & Order Service (Port 8002):**
 ```bash
-cd src/backend/cart-order-service
+cd src/cart-order-service
 go run main.go
 ```
 
 **Payment Service (Port 8003):**
 ```bash
-cd src/backend/payment-service
+cd src/payment-service
 go run main.go
 ```
 

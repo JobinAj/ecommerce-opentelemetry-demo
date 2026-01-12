@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flagd-config
+  namespace: apps
+data:
+  demo.flagd.json: |
+    {
+      "flags": {
+        "productCatalogFailure": {
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "off"
+        },
+        "paymentServiceFailure": {
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "off"
+        },
+        "cartServiceFailure": {
+          "state": "ENABLED",
+          "variants": {
+            "on": true,
+            "off": false
+          },
+          "defaultVariant": "off"
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagd
+  namespace: apps
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flagd
+  template:
+    metadata:
+      labels:
+        app: flagd
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8014"
+    spec:
+      containers:
+      - name: flagd
+        image: ghcr.io/open-feature/flagd:latest
+        args:
+        - start
+        - --uri=file:/etc/flagd/demo.flagd.json
+        ports:
+        - containerPort: 8013
+        - containerPort: 8014
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/flagd
+      volumes:
+      - name: config-volume
+        configMap:
+          name: flagd-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flagd
+  namespace: apps
+spec:
+  selector:
+    app: flagd
+  ports:
+  - name: grpc
+    port: 8013
+    targetPort: 8013
+  - name: metrics
+    port: 8014
+    targetPort: 8014
