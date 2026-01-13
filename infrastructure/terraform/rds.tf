@@ -58,7 +58,7 @@ resource "aws_db_instance" "postgres_db" {
   skip_final_snapshot       = true
   final_snapshot_identifier = "${var.cluster_name}-postgres-db-final-snapshot"
 
-  publicly_accessible = true
+  publicly_accessible = false
   multi_az            = false
 
   tags = {
