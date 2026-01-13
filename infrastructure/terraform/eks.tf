@@ -12,6 +12,8 @@ module "eks" {
   endpoint_public_access  = true
   endpoint_private_access = true
 
+  enable_cluster_creator_admin_permissions = true
+
   # Managed Node Groups
   eks_managed_node_groups = {
     general = {
@@ -19,7 +21,7 @@ module "eks" {
       min_size     = 1
       max_size     = 4
 
-      instance_types = ["t3.medium"]
+      instance_types = ["t3.large"]
       capacity_type  = "ON_DEMAND"
 
       labels = {
@@ -36,7 +38,7 @@ module "eks" {
       min_size     = 2
       max_size     = 6
 
-      instance_types = ["t3.medium"]
+      instance_types = ["t3.large"]
       capacity_type  = "ON_DEMAND"
 
       labels = {
@@ -56,7 +58,14 @@ module "eks" {
     }
 
     vpc-cni = {
-      most_recent = true
+      most_recent    = true
+      before_compute = true
+      configuration_values = jsonencode({
+        env = {
+          ENABLE_PREFIX_DELEGATION = "true"
+          WARM_PREFIX_TARGET       = "1"
+        }
+      })
     }
 
     aws-ebs-csi-driver = {
