@@ -1,5 +1,6 @@
-import { ShoppingBag, Menu, X, Search } from 'lucide-react';
-import { useState } from 'react';
+import { ShoppingBag, Menu, X, Search, User } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 
 interface HeaderProps {
   cartItemsCount: number;
@@ -8,6 +9,18 @@ interface HeaderProps {
 
 export const Header = ({ cartItemsCount, onCartClick }: HeaderProps) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (e) {
+        console.error("Failed to parse user", e);
+      }
+    }
+  }, []);
 
   return (
     <header className="bg-white text-versace-black sticky top-0 z-50 border-b border-gray-100">
@@ -31,7 +44,7 @@ export const Header = ({ cartItemsCount, onCartClick }: HeaderProps) => {
 
           {/* Logo (Centered) */}
           <div className="flex-shrink-0 flex justify-center flex-1">
-            <div className="text-3xl font-serif font-bold tracking-widest">VERSACE</div>
+            <Link to="/" className="text-3xl font-serif font-bold tracking-widest">VERSACE</Link>
           </div>
 
           {/* Right Icons */}
@@ -39,6 +52,17 @@ export const Header = ({ cartItemsCount, onCartClick }: HeaderProps) => {
             <button className="hidden md:block hover:text-versace-gold transition-colors">
               <Search size={20} />
             </button>
+
+            {user ? (
+              <span className="hidden md:block text-sm font-bold truncate max-w-[100px] cursor-pointer" title={user.email}>
+                Hi, {user.name ? user.name.split(' ')[0] : 'User'}
+              </span>
+            ) : (
+              <Link to="/login" className="hidden md:block hover:text-versace-gold transition-colors">
+                <User size={20} />
+              </Link>
+            )}
+
             <button
               onClick={onCartClick}
               className="relative hover:text-versace-gold transition-colors"
@@ -60,7 +84,11 @@ export const Header = ({ cartItemsCount, onCartClick }: HeaderProps) => {
             <a href="#" className="block text-sm font-bold tracking-widest hover:text-versace-gold transition-colors">MEN</a>
             <a href="#" className="block text-sm font-bold tracking-widest hover:text-versace-gold transition-colors">CHILDREN</a>
             <div className="pt-4 border-t border-gray-100">
-              <a href="#" className="block text-sm text-gray-600 hover:text-versace-gold transition-colors">Sign In</a>
+              {user ? (
+                <div className="block text-sm font-bold">Hi, {user.name}</div>
+              ) : (
+                <Link to="/login" className="block text-sm text-gray-600 hover:text-versace-gold transition-colors">Sign In</Link>
+              )}
             </div>
           </nav>
         )}

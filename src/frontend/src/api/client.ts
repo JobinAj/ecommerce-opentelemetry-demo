@@ -85,3 +85,41 @@ export const processPayment = async (details: PaymentDetails, amount: number, or
     return response.json();
 };
 
+export const signup = async (name: string, email: string, password: string): Promise<any> => {
+    const response = await fetch(`${API_CONFIG.CART_SERVICE}/api/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, password }),
+    });
+    if (!response.ok) {
+        let errorMessage = 'Signup failed';
+        try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+            errorMessage = await response.text() || errorMessage;
+        }
+        throw new Error(errorMessage);
+    }
+    return response.json();
+};
+
+export const login = async (email: string, password: string): Promise<any> => {
+    const response = await fetch(`${API_CONFIG.CART_SERVICE}/api/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+    });
+    if (!response.ok) {
+        let errorMessage = 'Login failed';
+        try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+            errorMessage = await response.text() || errorMessage;
+        }
+        throw new Error(errorMessage);
+    }
+    return response.json();
+};
+

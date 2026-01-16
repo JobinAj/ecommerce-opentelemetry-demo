@@ -8,7 +8,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install ALL dependencies (including devDependencies for build tools)
-RUN npm ci
+# Install ALL dependencies (including devDependencies for build tools)
+RUN npm install
 
 # Copy source code
 COPY . .
@@ -22,16 +23,11 @@ FROM node:20-alpine
 # Install a simple web server to serve static files
 RUN npm install -g serve
 
-# Create a non-root user
-RUN addgroup -S ecom && \
-    adduser -S ecom -G ecom -u 1000
-
-# Set working directory and ownership
+# Set working directory
 WORKDIR /app
-RUN chown ecom:ecom /app
 
-# Use the non-root user
-USER ecom
+# Use the existing node user (already has UID 1000)
+USER node
 
 # Copy the built application from the builder stage
 COPY --from=builder /app/dist ./dist
