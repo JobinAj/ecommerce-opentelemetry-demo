@@ -1,0 +1,10 @@
+INSERT INTO products (id, name, category, price, image, description, rating, reviews, sizes, colors, in_stock) VALUES
+('1', 'Silk Baroque Shirt', 'Tops', 1200, '/assets/silk_baroque_shirt.png', 'Luxurious silk shirt with signature Versace Baroque pattern. Perfect for special occasions.', 4.8, 124, ARRAY['XS', 'S', 'M', 'L', 'XL'], ARRAY['Black', 'Gold', 'White'], true),
+('2', 'Gold Medusa Blazer', 'Outerwear', 2500, '/assets/gold_medusa_blazer.png', 'Statement blazer featuring iconic Medusa head emblem. Tailored fit with premium wool blend.', 4.9, 89, ARRAY['XS', 'S', 'M', 'L', 'XL'], ARRAY['Black', 'Navy', 'Charcoal'], true),
+('3', 'Versace Print T-Shirt', 'Tops', 450, '/assets/versace_print_tshirt.png', 'Classic cotton t-shirt with Versace logo print. Comfortable and iconic.', 4.6, 256, ARRAY['XS', 'S', 'M', 'L', 'XL', 'XXL'], ARRAY['White', 'Black', 'Red', 'Navy'], true),
+('4', 'Tailored Silk Trousers', 'Bottoms', 1800, '/assets/tailored_silk_trousers.png', 'Elegant silk trousers with perfect drape. Timeless elegance for any wardrobe.', 4.7, 142, ARRAY['XS', 'S', 'M', 'L', 'XL'], ARRAY['Black', 'White', 'Beige'], true),
+('5', 'Black Leather Jacket', 'Outerwear', 3200, '/assets/black_leather_jacket.png', 'Premium leather jacket with signature detailing. Iconic luxury piece.', 4.9, 198, ARRAY['XS', 'S', 'M', 'L', 'XL'], ARRAY['Black', 'Brown'], true),
+('6', 'Gold Chain Dress', 'Dresses', 2800, '/assets/gold_chain_dress.png', 'Stunning dress with gold chain embellishments. Perfect for evening wear.', 4.8, 167, ARRAY['XS', 'S', 'M', 'L'], ARRAY['Black', 'Gold', 'Silver'], true),
+('7', 'Premium Denim Jeans', 'Bottoms', 950, '/assets/premium_denim_jeans.png', 'High-quality denim with Versace branding. Modern and versatile.', 4.7, 203, ARRAY['24', '25', '26', '27', '28', '29', '30', '31', '32'], ARRAY['Dark Blue', 'Light Blue', 'Black'], true),
+('8', 'Silk Evening Gown', 'Dresses', 4500, '/assets/silk_evening_gown.png', 'Breathtaking silk gown for special occasions. Haute couture elegance.', 5.0, 87, ARRAY['XS', 'S', 'M', 'L'], ARRAY['Black', 'Red', 'White'], true)
+ON CONFLICT (id) DO NOTHING;

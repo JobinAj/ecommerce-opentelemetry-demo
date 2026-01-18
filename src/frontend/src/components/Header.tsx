@@ -22,6 +22,11 @@ export const Header = ({ cartItemsCount, onCartClick }: HeaderProps) => {
     }
   }, []);
 
+  const handleLogout = () => {
+    localStorage.removeItem('user');
+    window.location.href = '/';
+  };
+
   return (
     <header className="bg-white text-versace-black sticky top-0 z-50 border-b border-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -54,9 +59,17 @@ export const Header = ({ cartItemsCount, onCartClick }: HeaderProps) => {
             </button>
 
             {user ? (
-              <span className="hidden md:block text-sm font-bold truncate max-w-[100px] cursor-pointer" title={user.email}>
-                Hi, {user.name ? user.name.split(' ')[0] : 'User'}
-              </span>
+              <div className="hidden md:flex items-center gap-4">
+                <span className="text-sm font-bold truncate max-w-[100px] cursor-default" title={user.email}>
+                  Hi, {user.name ? user.name.split(' ')[0] : 'User'}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="text-xs font-bold tracking-wider hover:text-versace-gold transition-colors uppercase border border-gray-200 px-3 py-1 hover:border-versace-gold"
+                >
+                  Logout
+                </button>
+              </div>
             ) : (
               <Link to="/login" className="hidden md:block hover:text-versace-gold transition-colors">
                 <User size={20} />
@@ -85,7 +98,15 @@ export const Header = ({ cartItemsCount, onCartClick }: HeaderProps) => {
             <a href="#" className="block text-sm font-bold tracking-widest hover:text-versace-gold transition-colors">CHILDREN</a>
             <div className="pt-4 border-t border-gray-100">
               {user ? (
-                <div className="block text-sm font-bold">Hi, {user.name}</div>
+                <div className="flex justify-between items-center">
+                  <span className="block text-sm font-bold">Hi, {user.name}</span>
+                  <button
+                    onClick={handleLogout}
+                    className="text-sm font-bold text-red-500 hover:text-red-700 uppercase"
+                  >
+                    Logout
+                  </button>
+                </div>
               ) : (
                 <Link to="/login" className="block text-sm text-gray-600 hover:text-versace-gold transition-colors">Sign In</Link>
               )}

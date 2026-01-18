@@ -1,0 +1,14 @@
+apiVersion: opentelemetry.io/v1alpha1
+kind: Instrumentation
+metadata:
+  name: otel-instrumentation
+  namespace: apps
+spec:
+  exporter:
+    endpoint: http://otel-collector-collector.observability:4318
+  propagators:
+    - tracecontext
+    - baggage
+    - b3
+  sampler:
+    type: parentbased_always_on

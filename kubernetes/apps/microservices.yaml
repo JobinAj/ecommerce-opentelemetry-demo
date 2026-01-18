@@ -13,7 +13,8 @@ spec:
       labels:
         app: product-service
       annotations:
-        instrumentation.opentelemetry.io/inject-sdk: "observability/otel-instrumentation"
+
+
     spec:
       securityContext:
         runAsNonRoot: true
@@ -39,7 +40,8 @@ spec:
           periodSeconds: 5
         env:
         - name: DB_HOST
-          value: "REPLACE_WITH_RDS_ENDPOINT"
+          value: "ecom-eks-cluster-postgres-db.ce3s0w06y1xp.us-east-1.rds.amazonaws.com"
+
         - name: DB_USER
           value: "postgres"
         - name: DB_PASSWORD
@@ -49,6 +51,10 @@ spec:
               key: password
         - name: DB_NAME
           value: "ecommercedb"
+        - name: OTEL_SERVICE_NAME
+          value: "product-service"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector-collector.observability:4318"
 ---
 apiVersion: v1
 kind: Service
@@ -78,7 +84,8 @@ spec:
       labels:
         app: payment-service
       annotations:
-        instrumentation.opentelemetry.io/inject-sdk: "observability/otel-instrumentation"
+
+
     spec:
       securityContext:
         runAsNonRoot: true
@@ -104,7 +111,12 @@ spec:
           periodSeconds: 5
         env:
         - name: DB_HOST
-          value: "REPLACE_WITH_RDS_ENDPOINT"
+          value: "ecom-eks-cluster-postgres-db.ce3s0w06y1xp.us-east-1.rds.amazonaws.com"
+
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_NAME
+          value: "ecommercedb"
         - name: STRIPE_SECRET_KEY
           value: "sk_test_mock"
         - name: STRIPE_API_URL
@@ -114,6 +126,10 @@ spec:
             secretKeyRef:
               name: db-credentials
               key: password
+        - name: OTEL_SERVICE_NAME
+          value: "payment-service"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector-collector.observability:4318"
 ---
 apiVersion: v1
 kind: Service
@@ -143,7 +159,8 @@ spec:
       labels:
         app: cart-order-service
       annotations:
-        instrumentation.opentelemetry.io/inject-sdk: "observability/otel-instrumentation"
+
+
     spec:
       securityContext:
         runAsNonRoot: true
@@ -169,12 +186,21 @@ spec:
           periodSeconds: 5
         env:
         - name: DB_HOST
-          value: "REPLACE_WITH_RDS_ENDPOINT"
+          value: "ecom-eks-cluster-postgres-db.ce3s0w06y1xp.us-east-1.rds.amazonaws.com"
+
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_NAME
+          value: "ecommercedb"
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
               name: db-credentials
               key: password
+        - name: OTEL_SERVICE_NAME
+          value: "cart-order-service"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: "http://otel-collector-collector.observability:4318"
 ---
 apiVersion: v1
 kind: Service

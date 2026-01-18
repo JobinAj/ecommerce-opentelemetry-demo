@@ -1,11 +1,14 @@
+# Grafana Dashboard Provider Configuration
+# Auto-loads dashboards from the demo folder on startup
 apiVersion: 1
 
 providers:
-  - name: 'Default'
+  - name: 'E-Commerce Demo'
     orgId: 1
-    folder: ''
+    folder: 'Demo'
+    folderUid: 'demo'
     type: file
     disableDeletion: false
     editable: true
     options:
-      path: /var/lib/grafana/dashboards
+      path: /etc/grafana/provisioning/dashboards/demo

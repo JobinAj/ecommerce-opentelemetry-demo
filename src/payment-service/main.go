@@ -9,6 +9,7 @@ import (
 	"os"
 
 	"payment-service/db"
+	"payment-service/telemetry" // Added telemetry import
 
 	"github.com/gorilla/mux"
 	"github.com/stripe/stripe-go/v72"
@@ -16,6 +17,7 @@ import (
 
 	flagd "github.com/open-feature/go-sdk-contrib/providers/flagd/pkg"
 	"github.com/open-feature/go-sdk/openfeature"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 var sc *client.API
@@ -223,12 +225,21 @@ func refundPayment(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Initialize OpenTelemetry
+	ctx := context.Background()
+	shutdownTracer := telemetry.InitTracer(ctx) // Uncommented
+	defer shutdownTracer(ctx)                   // Uncommented
+
 	// Initialize OpenFeature provider
-	provider, err := flagd.NewProvider()
+	provider, err := flagd.NewProvider(
+		flagd.WithHost("otel-flagd.apps.svc.cluster.local"),
+		flagd.WithPort(8013),
+	)
 	if err != nil {
-		log.Fatalf("Failed to create flagd provider: %v", err)
+		log.Printf("Warning: Failed to create flagd provider: %v", err)
+	} else {
+		openfeature.SetProvider(provider)
 	}
-	openfeature.SetProvider(provider)
 
 	db.InitDB()
 	defer db.CloseDB()
@@ -238,10 +249,16 @@ func main() {
 	if stripeKey == "" {
 		stripeKey = "sk_test_default_mock_key"
 	}
+
+	stripeURL := os.Getenv("STRIPE_API_URL")
+	if stripeURL == "" {
+		stripeURL = "http://localhost:12111"
+	}
+
 	sc = &client.API{}
 	sc.Init(stripeKey, &stripe.Backends{
 		API: stripe.GetBackendWithConfig(stripe.APIBackend, &stripe.BackendConfig{
-			URL: stripe.String("http://localhost:12111"), // Address of stripe-mock
+			URL: stripe.String(stripeURL), // Address of stripe-mock from env
 		}),
 	})
 
@@ -259,7 +276,8 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
 	}).Methods("GET", "OPTIONS")
 
-	port := ":8003"
-	fmt.Printf("Payment Service running on http://localhost%s\n", port)
-	log.Fatal(http.ListenAndServe(port, r))
+	port := "8003" // Changed to string for fmt.Sprintf
+	fmt.Printf("Payment Service running on http://localhost:%s\n", port)
+	handler := otelhttp.NewHandler(r, "payment-service")              // Added otelhttp middleware
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), handler)) // Modified ListenAndServe
 }

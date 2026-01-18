@@ -1,9 +1,67 @@
+# Prometheus Configuration
+# Pre-configured with OTLP support and resource attribute promotion
+
 global:
-  scrape_interval: 15s
+  # Align Prometheus scrape interval with the OTel SDKs' export interval
+  scrape_interval: 60s
+  evaluation_interval: 60s
+
+# OTLP configuration for receiving metrics from OTel Collector
+otlp:
+  keep_identifying_resource_attributes: true
+  promote_resource_attributes:
+    - service.instance.id
+    - service.name
+    - service.namespace
+    - service.version
+    - deployment.environment.name
+    # Kubernetes resource attributes
+    - k8s.cluster.name
+    - k8s.container.name
+    - k8s.deployment.name
+    - k8s.namespace.name
+    - k8s.node.name
+    - k8s.pod.name
+    - k8s.replicaset.name
+    # PostgreSQL resource attributes
+    - postgresql.database.name
+    - postgresql.table.name
+
+storage:
+  tsdb:
+    out_of_order_time_window: 30m
 
 scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Scrape OTel Collector metrics
   - job_name: 'otel-collector'
     static_configs:
-      - targets: ['otel-collector.observability:8889']
-        labels:
-          group: 'otel-collector'
+      - targets: ['otel-collector.observability.svc.cluster.local:8888']
+
+  # Scrape Kubernetes pods with prometheus.io annotations
+  - job_name: 'kubernetes-pods'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        action: replace
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        action: replace
+        target_label: kubernetes_pod_name

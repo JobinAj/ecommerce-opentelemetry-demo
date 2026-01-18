@@ -1,19 +1,37 @@
+# Grafana Datasources Configuration
+# Pre-configured with Prometheus (exemplar links) and Jaeger (traces-to-metrics)
 apiVersion: 1
 
 datasources:
   - name: Prometheus
+    uid: webstore-metrics
     type: prometheus
-    uid: prometheus
-    access: proxy
-    url: http://prometheus.observability:9090
+    url: http://prometheus.observability.svc.cluster.local:9090
+    editable: true
     isDefault: true
-    editable: true
+    jsonData:
+      # Align Prometheus data source time interval with the OTel SDKs' export interval
+      timeInterval: "60s"
+      exemplarTraceIdDestinations:
+        - datasourceUid: webstore-traces
+          name: trace_id
+        - url: http://jaeger.observability.svc.cluster.local:16686/trace/$${__value.raw}
+          name: trace_id
+          urlDisplayLabel: View in Jaeger UI
+
   - name: Jaeger
+    uid: webstore-traces
     type: jaeger
-    uid: jaeger
-    access: proxy
-    url: http://jaeger.observability:16686
+    url: http://jaeger.observability.svc.cluster.local:16686
     editable: true
+    isDefault: false
     jsonData:
       nodeGraph:
         enabled: true
+      tracesToMetrics:
+        datasourceUid: webstore-metrics
+        spanStartTimeShift: "-1h"
+        spanEndTimeShift: "1h"
+        tags:
+          - key: service.name
+            value: service

@@ -12,6 +12,8 @@ spec:
     metadata:
       labels:
         app: frontend
+      annotations:
+        instrumentation.opentelemetry.io/inject-nodejs: "otel-instrumentation"
     spec:
       securityContext:
         runAsNonRoot: true
@@ -20,28 +22,31 @@ spec:
         fsGroup: 1000
       containers:
       - name: frontend
-        image: frontend:latest
+        image: jobinaj/versace-frontend:latest
+        imagePullPolicy: Always
         ports:
-        - containerPort: 80
+        - containerPort: 3000
         livenessProbe:
           httpGet:
             path: /
-            port: 80
+            port: 3000
           initialDelaySeconds: 10
           periodSeconds: 20
         readinessProbe:
           httpGet:
             path: /
-            port: 80
+            port: 3000
           initialDelaySeconds: 5
           periodSeconds: 10
         env:
         - name: VITE_PRODUCT_SERVICE_URL
-          value: "/api/products"
+          value: "https://api.hexops.online"
         - name: VITE_PAYMENT_SERVICE_URL
-          value: "/api/payments"
+          value: "https://api.hexops.online"
         - name: VITE_CART_SERVICE_URL
-          value: "/api/carts"
+          value: "https://api.hexops.online"
+        - name: VITE_AUTH_SERVICE_URL
+          value: "https://api.hexops.online"
 ---
 apiVersion: v1
 kind: Service
@@ -54,4 +59,4 @@ spec:
   ports:
   - protocol: TCP
     port: 80
-    targetPort: 80
+    targetPort: 3000

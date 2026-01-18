@@ -8,7 +8,10 @@ RUN go mod download
 
 COPY . .
 
-RUN go build -o service main.go 
+# Ensure dependencies are tidy
+RUN go mod tidy
+
+RUN go build -o service .
 
 
 # Use a minimal alpine image for the final image

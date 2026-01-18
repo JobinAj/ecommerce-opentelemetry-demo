@@ -68,9 +68,9 @@ module "eks" {
       })
     }
 
-    aws-ebs-csi-driver = {
-      most_recent = true
-    }
+    # EBS CSI driver removed - was causing 20min timeout
+    # Can be installed manually if persistent volumes are needed:
+    # aws eks create-addon --cluster-name ecommerce-demo --addon-name aws-ebs-csi-driver
   }
 
   tags = {

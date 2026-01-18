@@ -6,64 +6,98 @@ metadata:
 data:
   locustfile.py: |
     import os
+    import random
+    import uuid
     from locust import HttpUser, task, between
 
     PRODUCT_SERVICE_HOST = os.getenv("PRODUCT_SERVICE_URL", "http://product-service.apps.svc.cluster.local:8080")
     CART_SERVICE_HOST = os.getenv("CART_SERVICE_URL", "http://cart-order-service.apps.svc.cluster.local:8082")
     PAYMENT_SERVICE_HOST = os.getenv("PAYMENT_SERVICE_URL", "http://payment-service.apps.svc.cluster.local:8081")
 
+    def generate_traceparent():
+        """Generate a W3C traceparent header."""
+        version = "00"
+        trace_id = uuid.uuid4().hex + uuid.uuid4().hex[:16]  # 32 hex chars (128-bit)
+        trace_id = trace_id[:32]
+        parent_id = uuid.uuid4().hex[:16]  # 16 hex chars (64-bit)
+        flags = "01"  # sampled
+        return f"{version}-{trace_id}-{parent_id}-{flags}"
+
     class WebsiteUser(HttpUser):
         wait_time = between(1, 5)
+        host = "http://product-service.apps.svc.cluster.local:8080"
 
         def on_start(self):
             self.cart_id = None
-            self.user_id = "user_" + os.urandom(4).hex()
+            random_hex = os.urandom(4).hex()
+            self.user_email = f"user_{random_hex}@example.com"
+            self.user_password = "password123"
+            self.user_name = f"User {random_hex}"
+            self.user_id = None
+
+            # Register the user with trace context
+            signup_payload = {"name": self.user_name, "email": self.user_email, "password": self.user_password}
+            headers = {"traceparent": generate_traceparent()}
+            with self.client.post(f"{CART_SERVICE_HOST}/api/signup", json=signup_payload, headers=headers, name="/api/signup", catch_response=True) as response:
+                if response.status_code == 200:
+                    self.user = response.json()
+                    self.user_id = self.user.get("id")
+                elif response.status_code == 409:
+                    pass
+                else:
+                    print(f"Failed to signup user: {response.text}")
+                    self.user_id = "guest"
 
         @task(3)
         def browse_products(self):
-            # Visit product listing
-            self.client.get(f"{PRODUCT_SERVICE_HOST}/api/products", name="/api/products")
+            headers = {"traceparent": generate_traceparent()}
+            self.client.get(f"{PRODUCT_SERVICE_HOST}/api/products", headers=headers, name="/api/products")
 
         @task(1)
         def checkout_flow(self):
+            if not self.user_id or self.user_id == "guest":
+                return
+
+            # Generate a single trace for the entire flow
+            trace_id = uuid.uuid4().hex + uuid.uuid4().hex[:16]
+            trace_id = trace_id[:32]
+            
             # 1. Create Cart
-            with self.client.post(f"{CART_SERVICE_HOST}/api/carts", json={"userId": self.user_id}, name="/api/carts [Create]", catch_response=True) as response:
+            parent_id = uuid.uuid4().hex[:16]
+            traceparent = f"00-{trace_id}-{parent_id}-01"
+            headers = {"traceparent": traceparent}
+            with self.client.post(f"{CART_SERVICE_HOST}/api/carts", json={"userId": self.user_id}, headers=headers, name="/api/carts [Create]", catch_response=True) as response:
                 if response.status_code == 200:
                     self.cart_id = response.json().get("id")
                 else:
                     response.failure(f"Failed to create cart: {response.text}")
                     return
 
-            # 2. Add Item to Cart
-            item = {
-                "productId": "101",
-                "productName": "Test Product",
-                "price": 50.0,
-                "quantity": 1,
-                "selectedSize": "M",
-                "selectedColor": "Blue"
-            }
-            self.client.post(f"{CART_SERVICE_HOST}/api/carts/{self.cart_id}/items", json=item, name="/api/carts/{id}/items [Add]")
+            # 2. Add Item to Cart (child span)
+            parent_id = uuid.uuid4().hex[:16]
+            traceparent = f"00-{trace_id}-{parent_id}-01"
+            headers = {"traceparent": traceparent}
+            item = {"productId": "1", "productName": "Silk Baroque Shirt", "price": 1200.0, "quantity": 1, "selectedSize": "M", "selectedColor": "Black"}
+            self.client.post(f"{CART_SERVICE_HOST}/api/carts/{self.cart_id}/items", json=item, headers=headers, name="/api/carts/{id}/items [Add]")
 
-            # 3. Create Order
+            # 3. Create Order (child span)
+            parent_id = uuid.uuid4().hex[:16]
+            traceparent = f"00-{trace_id}-{parent_id}-01"
+            headers = {"traceparent": traceparent}
             order_id = None
-            with self.client.post(f"{CART_SERVICE_HOST}/api/carts/{self.cart_id}/orders", name="/api/carts/{id}/orders [Create]", catch_response=True) as response:
+            with self.client.post(f"{CART_SERVICE_HOST}/api/carts/{self.cart_id}/orders", headers=headers, name="/api/carts/{id}/orders [Create]", catch_response=True) as response:
                 if response.status_code == 200:
                     order_id = response.json().get("id")
                 else:
                     response.failure(f"Failed to create order: {response.text}")
                     return
 
-            # 4. Process Payment
-            payment_payload = {
-                "orderId": order_id,
-                "amount": 50.0,
-                "currency": "USD",
-                "cardNumber": "4242424242424242",
-                "cvv": "123",
-                "expiryDate": "12/25"
-            }
-            self.client.post(f"{PAYMENT_SERVICE_HOST}/api/payments", json=payment_payload, name="/api/payments [Pay]")
+            # 4. Process Payment (child span)
+            parent_id = uuid.uuid4().hex[:16]
+            traceparent = f"00-{trace_id}-{parent_id}-01"
+            headers = {"traceparent": traceparent}
+            payment_payload = {"orderId": order_id, "amount": 1200.0, "currency": "USD", "cardNumber": "4242424242424242", "cvv": "123", "expiryDate": "12/25"}
+            self.client.post(f"{PAYMENT_SERVICE_HOST}/api/payments", json=payment_payload, headers=headers, name="/api/payments [Pay]")
 ---
 apiVersion: apps/v1
 kind: Deployment

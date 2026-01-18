@@ -8,10 +8,12 @@ import (
 	"net/http"
 
 	"product-service/db"
+	"product-service/telemetry"
 
 	"github.com/gorilla/mux"
 	flagd "github.com/open-feature/go-sdk-contrib/providers/flagd/pkg"
 	"github.com/open-feature/go-sdk/openfeature"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 func enableCORS(next http.Handler) http.Handler {
@@ -118,12 +120,21 @@ func searchProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
+	// Initialize OpenTelemetry
+	ctx := context.Background()
+	shutdownTracer := telemetry.InitTracer(ctx)
+	defer shutdownTracer(ctx)
+
 	// Initialize OpenFeature provider
-	provider, err := flagd.NewProvider()
+	provider, err := flagd.NewProvider(
+		flagd.WithHost("otel-flagd.apps.svc.cluster.local"),
+		flagd.WithPort(8013),
+	)
 	if err != nil {
-		log.Fatalf("Failed to create flagd provider: %v", err)
+		log.Printf("Warning: Failed to create flagd provider: %v", err)
+	} else {
+		openfeature.SetProvider(provider)
 	}
-	openfeature.SetProvider(provider)
 
 	db.InitDB()
 	defer db.CloseDB()
@@ -143,7 +154,8 @@ func main() {
 		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
 	}).Methods("GET", "OPTIONS")
 
-	port := ":8001"
-	fmt.Printf("Product Service running on http://localhost%s\n", port)
-	log.Fatal(http.ListenAndServe(port, r))
+	port := "8001"
+	fmt.Printf("Product Service running on http://localhost:%s\n", port)
+	handler := otelhttp.NewHandler(r, "product-service")
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), handler))
 }

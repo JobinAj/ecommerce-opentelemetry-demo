@@ -1,37 +1,87 @@
+# Observability Stack - Pre-configured with OpenTelemetry Demo-style setup
+# Includes: OTel Collector (SpanMetrics), Jaeger (Prometheus metrics backend), 
+# Prometheus (OTLP receiver), Grafana (pre-loaded datasources & dashboards)
+
+---
+# OpenTelemetry Collector with SpanMetrics Connector
 apiVersion: opentelemetry.io/v1alpha1
 kind: OpenTelemetryCollector
 metadata:
   name: otel-collector
   namespace: observability
 spec:
+  image: otel/opentelemetry-collector-contrib:0.91.0
   config: |
     receivers:
       otlp:
         protocols:
           grpc:
+            endpoint: 0.0.0.0:4317
           http:
-    processors:
-      batch:
+            endpoint: 0.0.0.0:4318
+            cors:
+              allowed_origins:
+                - "http://*"
+                - "https://*"
+
     exporters:
+      debug:
+        verbosity: basic
       otlp/jaeger:
-        endpoint: jaeger-collector.observability:4317
+        endpoint: "jaeger.observability.svc.cluster.local:4317"
         tls:
           insecure: true
-      prometheus:
-        endpoint: "0.0.0.0:8889"
-      logging:
-        loglevel: debug
+      otlphttp/prometheus:
+        endpoint: "http://prometheus.observability.svc.cluster.local:9090/api/v1/otlp"
+        tls:
+          insecure: true
+
+    processors:
+      memory_limiter:
+        check_interval: 5s
+        limit_percentage: 80
+        spike_limit_percentage: 25
+      batch:
+        send_batch_size: 10000
+        timeout: 10s
+
+    connectors:
+      spanmetrics:
+        histogram:
+          explicit:
+            buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
+        dimensions:
+          - name: http.method
+          - name: http.status_code
+          - name: http.route
+        exemplars:
+          enabled: true
+        dimensions_cache_size: 1000
+        aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+        metrics_flush_interval: 15s
+
     service:
+      telemetry:
+        logs:
+          level: info
+        metrics:
+          level: detailed
       pipelines:
         traces:
           receivers: [otlp]
-          processors: [batch]
-          exporters: [otlp/jaeger, logging]
+          processors: [memory_limiter, batch]
+          exporters: [otlp/jaeger, debug, spanmetrics]
         metrics:
+          receivers: [otlp, spanmetrics]
+          processors: [memory_limiter, batch]
+          exporters: [otlphttp/prometheus, debug]
+        logs:
           receivers: [otlp]
-          processors: [batch]
-          exporters: [prometheus, logging]
+          processors: [memory_limiter, batch]
+          exporters: [debug]
+
 ---
+# Auto-instrumentation for pods
 apiVersion: opentelemetry.io/v1alpha1
 kind: Instrumentation
 metadata:
@@ -39,14 +89,16 @@ metadata:
   namespace: observability
 spec:
   exporter:
-    endpoint: http://otel-collector.observability:4317
+    endpoint: http://otel-collector-collector.observability:4318
   propagators:
     - tracecontext
     - baggage
     - b3
   sampler:
     type: parentbased_always_on
+
 ---
+# Jaeger - All-in-one with OTLP receiver
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -63,10 +115,33 @@ spec:
     spec:
       containers:
       - name: jaeger
-        image: jaegertracing/all-in-one:latest
+        image: jaegertracing/all-in-one:1.53
         ports:
         - containerPort: 16686
+          name: ui
         - containerPort: 4317
+          name: otlp-grpc
+        - containerPort: 4318
+          name: otlp-http
+        env:
+        - name: COLLECTOR_OTLP_ENABLED
+          value: "true"
+        - name: METRICS_STORAGE_TYPE
+          value: "prometheus"
+        - name: PROMETHEUS_SERVER_URL
+          value: "http://prometheus.observability.svc.cluster.local:9090"
+        - name: PROMETHEUS_QUERY_NORMALIZE_CALLS
+          value: "true"
+        - name: PROMETHEUS_QUERY_NORMALIZE_DURATION
+          value: "true"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+
 ---
 apiVersion: v1
 kind: Service
@@ -80,10 +155,15 @@ spec:
   - name: ui
     port: 16686
     targetPort: 16686
-  - name: otlp
+  - name: otlp-grpc
     port: 4317
     targetPort: 4317
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
+
 ---
+# Prometheus ConfigMap with OTLP support
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -92,14 +172,45 @@ metadata:
 data:
   prometheus.yml: |
     global:
-      scrape_interval: 15s
+      scrape_interval: 60s
+      evaluation_interval: 60s
+    
+    # OTLP receiver configuration is enabled via command line args
+    
     scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+      
       - job_name: 'otel-collector'
         static_configs:
-          - targets: ['otel-collector.observability:8889']
-            labels:
-              group: 'otel-collector'
+          - targets: ['otel-collector-collector-monitoring.observability.svc.cluster.local:8888']
+      
+      - job_name: 'kubernetes-pods'
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+            action: keep
+            regex: true
+          - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+            action: replace
+            target_label: __metrics_path__
+            regex: (.+)
+          - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+            action: replace
+            regex: ([^:]+)(?::\d+)?;(\d+)
+            replacement: $1:$2
+            target_label: __address__
+          - source_labels: [__meta_kubernetes_namespace]
+            action: replace
+            target_label: kubernetes_namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            action: replace
+            target_label: kubernetes_pod_name
+
 ---
+# Prometheus Deployment with OTLP receiver enabled
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -114,19 +225,74 @@ spec:
       labels:
         app: prometheus
     spec:
+      serviceAccountName: prometheus
       containers:
       - name: prometheus
-        image: prom/prometheus:latest
+        image: prom/prometheus:v2.48.0
+        args:
+          - '--config.file=/etc/prometheus/prometheus.yml'
+          - '--storage.tsdb.path=/prometheus'
+          - '--web.enable-lifecycle'
+          - '--web.enable-remote-write-receiver'
+          - '--enable-feature=otlp-write-receiver'
+          - '--enable-feature=exemplar-storage'
         ports:
         - containerPort: 9090
         volumeMounts:
         - name: config-volume
           mountPath: /etc/prometheus/prometheus.yml
           subPath: prometheus.yml
+        - name: prometheus-data
+          mountPath: /prometheus
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
       volumes:
       - name: config-volume
         configMap:
           name: prometheus-config
+      - name: prometheus-data
+        emptyDir: {}
+
+---
+# Prometheus ServiceAccount and RBAC for Kubernetes SD
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus
+  namespace: observability
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "nodes/proxy", "services", "endpoints", "pods"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["extensions"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus
+subjects:
+- kind: ServiceAccount
+  name: prometheus
+  namespace: observability
+
 ---
 apiVersion: v1
 kind: Service
@@ -139,7 +305,9 @@ spec:
   ports:
   - port: 9090
     targetPort: 9090
+
 ---
+# Grafana Datasources ConfigMap - With Exemplar Links and Traces-to-Metrics
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -150,22 +318,38 @@ data:
     apiVersion: 1
     datasources:
       - name: Prometheus
+        uid: webstore-metrics
         type: prometheus
-        uid: prometheus
-        access: proxy
-        url: http://prometheus:9090
+        url: http://prometheus.observability.svc.cluster.local:9090
+        editable: true
         isDefault: true
-        editable: true
+        jsonData:
+          timeInterval: "60s"
+          exemplarTraceIdDestinations:
+            - datasourceUid: webstore-traces
+              name: trace_id
+            - url: http://jaeger.observability.svc.cluster.local:16686/trace/$${__value.raw}
+              name: trace_id
+              urlDisplayLabel: View in Jaeger UI
       - name: Jaeger
+        uid: webstore-traces
         type: jaeger
-        uid: jaeger
-        access: proxy
-        url: http://jaeger:16686
+        url: http://jaeger.observability.svc.cluster.local:16686
         editable: true
+        isDefault: false
         jsonData:
           nodeGraph:
             enabled: true
+          tracesToMetrics:
+            datasourceUid: webstore-metrics
+            spanStartTimeShift: "-1h"
+            spanEndTimeShift: "1h"
+            tags:
+              - key: service.name
+                value: service
+
 ---
+# Grafana Dashboard Provider ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -175,42 +359,96 @@ data:
   dashboards.yaml: |
     apiVersion: 1
     providers:
-      - name: 'Default'
+      - name: 'E-Commerce Demo'
         orgId: 1
-        folder: ''
+        folder: 'Demo'
+        folderUid: 'demo'
         type: file
         disableDeletion: false
         editable: true
         options:
           path: /var/lib/grafana/dashboards
+
 ---
+# Grafana APM Dashboard ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: grafana-dashboards
   namespace: observability
 data:
-  main.json: |
+  apm-dashboard.json: |
     {
       "annotations": { "list": [] },
       "editable": true,
       "panels": [
         {
-          "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisCenteredZero": false, "axisColorMode": "text", "axisLabel": "", "axisPlacement": "auto", "barAlignment": 0, "drawStyle": "line", "fillOpacity": 0, "gradientMode": "none", "hideFrom": { "legend": false, "tooltip": false, "viz": false }, "lineInterpolation": "linear", "lineWidth": 1, "pointSize": 5, "scaleDistribution": { "type": "linear" }, "showPoints": "auto", "spanNulls": false, "stacking": { "group": "A", "mode": "none" }, "thresholdsStyle": { "mode": "off" } }, "mappings": [], "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 80 } ] } }, "overrides": [] },
+          "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
+          "fieldConfig": { "defaults": { "unit": "reqps" } },
           "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
           "id": 1,
-          "options": { "legend": { "calcs": [], "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "single", "sort": "none" } },
-          "targets": [ { "datasource": { "type": "prometheus", "uid": "prometheus" }, "editorMode": "code", "expr": "rate(http_server_requests_total[5m])", "legendFormat": "{{service}}", "range": true, "refId": "A" } ],
-          "title": "HTTP Request Rate",
+          "options": { "colorMode": "value", "graphMode": "area" },
+          "targets": [{ "expr": "sum(rate(calls_total[$__rate_interval]))", "legendFormat": "Request Rate" }],
+          "title": "Request Rate",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
+          "fieldConfig": { "defaults": { "unit": "percent" } },
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+          "id": 2,
+          "options": { "colorMode": "value", "graphMode": "area" },
+          "targets": [{ "expr": "sum(rate(calls_total{status_code=\"STATUS_CODE_ERROR\"}[$__rate_interval])) / sum(rate(calls_total[$__rate_interval])) * 100", "legendFormat": "Error Rate" }],
+          "title": "Error Rate",
+          "type": "stat"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
+          "fieldConfig": { "defaults": { "unit": "ms" } },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+          "id": 3,
+          "options": { "legend": { "displayMode": "table", "placement": "right" } },
+          "targets": [
+            { "expr": "histogram_quantile(0.50, sum(rate(duration_milliseconds_bucket[$__rate_interval])) by (le, service_name))", "legendFormat": "{{service_name}} p50" },
+            { "expr": "histogram_quantile(0.95, sum(rate(duration_milliseconds_bucket[$__rate_interval])) by (le, service_name))", "legendFormat": "{{service_name}} p95" },
+            { "expr": "histogram_quantile(0.99, sum(rate(duration_milliseconds_bucket[$__rate_interval])) by (le, service_name))", "legendFormat": "{{service_name}} p99" }
+          ],
+          "title": "Latency by Service (p50, p95, p99)",
+          "type": "timeseries"
+        },
+        {
+          "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
+          "fieldConfig": { "defaults": { "unit": "reqps" } },
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 16 },
+          "id": 4,
+          "options": { "legend": { "displayMode": "table", "placement": "right" } },
+          "targets": [{ "expr": "sum(rate(calls_total[$__rate_interval])) by (service_name)", "legendFormat": "{{service_name}}" }],
+          "title": "Request Rate by Service",
           "type": "timeseries"
         }
       ],
-      "title": "Microservices Overview",
-      "uid": "microservices-overview",
+      "schemaVersion": 38,
+      "tags": ["apm", "opentelemetry", "e-commerce"],
+      "templating": {
+        "list": [{
+          "datasource": { "type": "prometheus", "uid": "webstore-metrics" },
+          "definition": "label_values(calls_total, service_name)",
+          "includeAll": true,
+          "label": "Service",
+          "name": "service",
+          "query": "label_values(calls_total, service_name)",
+          "refresh": 2,
+          "type": "query"
+        }]
+      },
+      "time": { "from": "now-15m", "to": "now" },
+      "title": "APM Dashboard",
+      "uid": "apm-dashboard",
       "version": 1
     }
+
 ---
+# Grafana Deployment with provisioning
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -227,9 +465,14 @@ spec:
     spec:
       containers:
       - name: grafana
-        image: grafana/grafana:latest
+        image: grafana/grafana:10.2.0
         ports:
         - containerPort: 3000
+        env:
+        - name: GF_SECURITY_ADMIN_PASSWORD
+          value: "admin"
+        - name: GF_FEATURE_TOGGLES_ENABLE
+          value: "traceqlEditor tempoSearch tempoServiceGraph"
         volumeMounts:
         - name: grafana-datasources
           mountPath: /etc/grafana/provisioning/datasources/datasources.yaml
@@ -239,6 +482,13 @@ spec:
           subPath: dashboards.yaml
         - name: grafana-dashboards
           mountPath: /var/lib/grafana/dashboards
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
       volumes:
       - name: grafana-datasources
         configMap:
@@ -249,6 +499,7 @@ spec:
       - name: grafana-dashboards
         configMap:
           name: grafana-dashboards
+
 ---
 apiVersion: v1
 kind: Service

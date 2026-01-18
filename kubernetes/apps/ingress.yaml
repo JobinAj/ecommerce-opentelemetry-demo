@@ -1,0 +1,184 @@
+---
+# ALB Ingress for hexops.online
+# Routes traffic from ALB to internal services based on subdomain
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: hexops-ingress
+  namespace: apps
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}, {"HTTP":80}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # NOTE: Replace with actual ACM certificate ARN after terraform apply
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:424400575992:certificate/8262672b-16b8-4ad8-b826-20007b4a2a75
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/healthcheck-interval-seconds: '15'
+    alb.ingress.kubernetes.io/healthcheck-timeout-seconds: '5'
+    alb.ingress.kubernetes.io/success-codes: '200,301,302,404'
+    alb.ingress.kubernetes.io/group.name: hexops-alb
+spec:
+  rules:
+  # Frontend - hexops.online
+  - host: hexops.online
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 80
+  
+  # Frontend - www.hexops.online
+  - host: www.hexops.online
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: frontend
+            port:
+              number: 80
+  
+  # API - api.hexops.online
+  - host: api.hexops.online
+    http:
+      paths:
+      - path: /api/products
+        pathType: Prefix
+        backend:
+          service:
+            name: product-service
+            port:
+              number: 8080
+      - path: /api/payments
+        pathType: Prefix
+        backend:
+          service:
+            name: payment-service
+            port:
+              number: 8081
+      - path: /api/cart
+        pathType: Prefix
+        backend:
+          service:
+            name: cart-order-service
+            port:
+              number: 8082
+      - path: /api/carts
+        pathType: Prefix
+        backend:
+          service:
+            name: cart-order-service
+            port:
+              number: 8082
+      - path: /api/orders
+        pathType: Prefix
+        backend:
+          service:
+            name: cart-order-service
+            port:
+              number: 8082
+      - path: /api/signup
+        pathType: Prefix
+        backend:
+          service:
+            name: cart-order-service
+            port:
+              number: 8082
+      - path: /api/login
+        pathType: Prefix
+        backend:
+          service:
+            name: cart-order-service
+            port:
+              number: 8082
+
+---
+# Ingress for Observability namespace (Grafana, Jaeger, Prometheus)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: observability-ingress
+  namespace: observability
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}, {"HTTP":80}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # NOTE: Replace with actual ACM certificate ARN after terraform apply
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:424400575992:certificate/8262672b-16b8-4ad8-b826-20007b4a2a75
+    alb.ingress.kubernetes.io/group.name: hexops-alb
+spec:
+  rules:
+  # Grafana - grafana.hexops.online
+  - host: grafana.hexops.online
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
+  
+  # Jaeger - jaeger.hexops.online
+  - host: jaeger.hexops.online
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jaeger
+            port:
+              number: 16686
+  
+  # Prometheus - prometheus.hexops.online
+  - host: prometheus.hexops.online
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus
+            port:
+              number: 9090
+
+---
+# Ingress for Locust (also in apps namespace)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: locust-ingress
+  namespace: apps
+  annotations:
+    kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}, {"HTTP":80}]'
+    alb.ingress.kubernetes.io/ssl-redirect: '443'
+    # NOTE: Replace with actual ACM certificate ARN after terraform apply
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:424400575992:certificate/8262672b-16b8-4ad8-b826-20007b4a2a75
+    alb.ingress.kubernetes.io/group.name: hexops-alb
+spec:
+  rules:
+  # Locust - locust.hexops.online
+  - host: locust.hexops.online
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: locust
+            port:
+              number: 8089

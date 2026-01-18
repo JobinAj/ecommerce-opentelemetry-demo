@@ -1,0 +1,83 @@
+# OpenTelemetry Collector Configuration
+# Pre-configured with SpanMetrics connector for generating metrics from traces
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        cors:
+          allowed_origins:
+            - "http://*"
+            - "https://*"
+
+exporters:
+  debug:
+    verbosity: basic
+  
+  otlp/jaeger:
+    endpoint: "jaeger.observability.svc.cluster.local:4317"
+    tls:
+      insecure: true
+  
+  otlphttp/prometheus:
+    endpoint: "http://prometheus.observability.svc.cluster.local:9090/api/v1/otlp"
+    tls:
+      insecure: true
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  
+  batch:
+    send_batch_size: 10000
+    timeout: 10s
+  
+  resourcedetection:
+    detectors: [env, system]
+    timeout: 5s
+
+connectors:
+  spanmetrics:
+    histogram:
+      explicit:
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s]
+    dimensions:
+      - name: http.method
+      - name: http.status_code
+      - name: http.route
+      - name: rpc.method
+      - name: rpc.service
+    exemplars:
+      enabled: true
+    dimensions_cache_size: 1000
+    aggregation_temporality: "AGGREGATION_TEMPORALITY_CUMULATIVE"
+    metrics_flush_interval: 15s
+
+service:
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
+  
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [otlp/jaeger, debug, spanmetrics]
+    
+    metrics:
+      receivers: [otlp, spanmetrics]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [otlphttp/prometheus, debug]
+    
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resourcedetection, batch]
+      exporters: [debug]

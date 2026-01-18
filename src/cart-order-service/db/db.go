@@ -56,6 +56,42 @@ func CloseDB() {
 	}
 }
 
+type User struct {
+	ID           string `json:"id"`
+	Email        string `json:"email"`
+	PasswordHash string `json:"password,omitempty"`
+	Name         string `json:"name"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
+}
+
+// CreateUser creates a new user
+func CreateUser(user User) error {
+	query := `
+		INSERT INTO users (id, email, password_hash, name)
+		VALUES ($1, $2, $3, $4)`
+
+	_, err := DB.Exec(query, user.ID, user.Email, user.PasswordHash, user.Name)
+	return err
+}
+
+// GetUserByEmail retrieves a user by email
+func GetUserByEmail(email string) (*User, error) {
+	query := `SELECT id, email, password_hash, name, created_at, updated_at FROM users WHERE email = $1`
+
+	var user User
+	err := DB.QueryRow(query, email).Scan(
+		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.CreatedAt, &user.UpdatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("user not found")
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
 type CartItem struct {
 	ProductID     string  `json:"productId"`
 	ProductName   string  `json:"productName"`

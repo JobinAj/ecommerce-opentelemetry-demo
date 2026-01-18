@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-init-job
+  namespace: apps
+spec:
+  template:
+    spec:
+      containers:
+      - name: db-init
+        image: postgres:15
+        command: ["/bin/bash", "-c"]
+        args:
+          - |
+            export PGPASSWORD=$DB_PASSWORD
+            psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f /scripts/schema.sql
+            psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f /scripts/seeds.sql
+        env:
+        - name: DB_HOST
+          value: "ecom-eks-cluster-postgres-db.ce3s0w06y1xp.us-east-1.rds.amazonaws.com"
+        - name: DB_USER
+          value: "postgres"
+        - name: DB_NAME
+          value: "ecommercedb"
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: password
+        volumeMounts:
+        - name: scripts
+          mountPath: /scripts
+      volumes:
+      - name: scripts
+        configMap:
+          name: db-init-scripts
+      restartPolicy: Never
+  backoffLimit: 4

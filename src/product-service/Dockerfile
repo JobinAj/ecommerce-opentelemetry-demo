@@ -13,8 +13,11 @@ RUN go mod download
 # Copy the source code into the container
 COPY . .
 
+# Ensure dependencies are tidy
+RUN go mod tidy
+
 # Build the Go application
-RUN go build -o service main.go
+RUN go build -o service .
 
 # Use a minimal alpine image for the final image
 FROM alpine:latest
